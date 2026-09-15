@@ -15,14 +15,30 @@
 
   <header class="app-header">
     <h1>Transport Report</h1>
-    <span class="status-dot" id="status-dot">Ready</span>
+    <div class="header-right">
+      <span class="status-dot" id="status-dot">Ready</span>
+      <button type="button" id="btn-settings" class="icon-btn" aria-label="Settings">⚙</button>
+    </div>
   </header>
+
+  <!-- Offline queue banner -->
+  <div class="queue-banner" id="queue-banner" hidden>
+    <span id="queue-text"></span>
+    <button type="button" id="btn-sync-now">Retry</button>
+  </div>
 
   <div class="voice-bar" id="voice-bar">
     <button type="button" id="btn-voice-commands" class="voice-toggle">
       <span class="mic-glyph"></span> Voice commands off
     </button>
     <span class="voice-heard" id="voice-heard"></span>
+  </div>
+
+  <!-- Priority tagging -->
+  <div class="priority-row" role="group" aria-label="Case priority">
+    <button type="button" class="priority-chip active" data-priority="Normal">Normal</button>
+    <button type="button" class="priority-chip" data-priority="Urgent">⚠ Urgent</button>
+    <button type="button" class="priority-chip" data-priority="Red Zone">⬤ Red Zone</button>
   </div>
 
   <!-- Case details -->
@@ -45,12 +61,20 @@
 
     <div class="field-row">
       <div class="field">
-        <label for="amo-name">AMO</label>
-        <input type="text" id="amo-name" placeholder="Name" />
+        <label for="amo-select">AMO</label>
+        <select id="amo-select">
+          <option value="">Select…</option>
+          <option value="__other">Type manually…</option>
+        </select>
+        <input type="text" id="amo-name" placeholder="AMO name" hidden />
       </div>
       <div class="field">
-        <label for="pilot-name">Pilot</label>
-        <input type="text" id="pilot-name" placeholder="Name" />
+        <label for="pilot-select">Pilot</label>
+        <select id="pilot-select">
+          <option value="">Select…</option>
+          <option value="__other">Type manually…</option>
+        </select>
+        <input type="text" id="pilot-name" placeholder="Pilot name" hidden />
       </div>
     </div>
   </div>
@@ -92,7 +116,7 @@
       <div class="stage-num">4</div>
       <div class="stage-body">
         <div class="stage-title">At Hospital</div>
-        <div class="stage-sub">Arrived — or mark outcome below if not applicable</div>
+        <div class="stage-sub">Skip if not transported — set Outcome below</div>
         <div class="stage-time" data-time-for="atHospital"></div>
       </div>
       <button class="stage-btn" data-stage-btn="atHospital">Log</button>
@@ -113,7 +137,8 @@
   <div class="field-group">
     <div class="field">
       <label for="hospital-name">Hospital (if applicable)</label>
-      <input type="text" id="hospital-name" placeholder="e.g. Hosp Jitra" />
+      <input type="text" id="hospital-name" placeholder="Auto-detected on arrival, or type" />
+      <div class="detect-hint" id="hospital-hint"></div>
     </div>
     <div class="field">
       <label for="outcome">Outcome</label>
@@ -131,7 +156,7 @@
     <div class="field">
       <label for="notes">Management Notes (during transportation)</label>
 
-      <div class="recorder" id="recorder">
+      <div class="recorder">
         <button type="button" id="btn-record" class="record-btn">
           <span class="record-dot"></span>
           <span id="record-label">Start recording</span>
@@ -141,7 +166,7 @@
       <div class="recording-status" id="recording-status"></div>
 
       <textarea id="notes" placeholder="Transcript appears here after recording — you can edit it"></textarea>
-      <div class="notes-hint">Recording saves to Drive and is transcribed by Gemini. Blood pressure is auto-formatted as 125/56mmHg. Numbers are never altered.</div>
+      <div class="notes-hint">Recording works with no signal. It saves on the phone first, then uploads and transcribes once you are back in coverage.</div>
     </div>
   </div>
 
@@ -162,13 +187,55 @@
 
 </div>
 
+<!-- Settings sheet -->
+<div class="sheet-backdrop" id="settings-backdrop" hidden></div>
+<div class="settings-sheet" id="settings-sheet" hidden>
+  <div class="settings-head">
+    <h2>Settings</h2>
+    <button type="button" id="btn-close-settings" class="icon-btn" aria-label="Close">✕</button>
+  </div>
+
+  <div class="settings-body">
+
+    <section>
+      <h3>Gemini API key</h3>
+      <p class="settings-note">Leave blank to use the shared key on the server. Enter your own key from Google AI Studio to use your personal quota instead. Stored only on this device.</p>
+      <input type="password" id="personal-api-key" placeholder="Your Gemini API key (optional)" />
+      <button type="button" id="btn-save-key" class="settings-btn">Save key</button>
+      <div class="settings-status" id="key-status"></div>
+    </section>
+
+    <section>
+      <h3>Location calibration</h3>
+      <p class="settings-note">Stand at the location, then tap Set. This stores exact coordinates on this device and overrides the defaults.</p>
+      <div id="location-calibration"></div>
+    </section>
+
+    <section>
+      <h3>Pending uploads</h3>
+      <p class="settings-note">Recordings and case edits waiting for a connection.</p>
+      <div class="settings-status" id="pending-detail">None</div>
+      <button type="button" id="btn-force-sync" class="settings-btn">Sync now</button>
+    </section>
+
+    <section>
+      <h3>Staff list</h3>
+      <button type="button" id="btn-refresh-staff" class="settings-btn">Refresh from sheet</button>
+      <div class="settings-status" id="staff-status"></div>
+    </section>
+
+  </div>
+</div>
+
 <div class="loading-overlay" id="loading-overlay">
   <div class="spinner"></div>
-  <span id="loading-label">Saving case…</span>
+  <span id="loading-label">Working…</span>
 </div>
 
 <div class="toast" id="toast"></div>
 
+<script src="config.js" defer></script>
+<script src="storage.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>
