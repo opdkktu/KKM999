@@ -1,9 +1,11 @@
-const CACHE_NAME = "ambulance-report-v1";
+const CACHE_NAME = "ambulance-report-v3";
 const SHELL_FILES = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
+  "./config.js",
+  "./storage.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
