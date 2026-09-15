@@ -378,3 +378,145 @@ body {
   .spinner { animation: none; border-top-color: var(--amber); }
   .stage-card, .toast, .loading-overlay { transition: none; }
 }
+
+/* ===== Phase 2 additions ===== */
+
+/* Autosave indicator states */
+.status-dot.saving::before { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
+.status-dot.error::before { background: var(--red); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+/* Voice command bar */
+.voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  min-height: 2.6rem;
+}
+
+.voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  flex: none;
+}
+
+.voice-toggle.listening {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(255, 176, 32, 0.08);
+}
+
+.mic-glyph {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.voice-toggle.listening .mic-glyph {
+  background: var(--amber);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.voice-heard {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Recorder */
+.recorder {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.record-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+.record-btn.recording {
+  border-color: var(--red);
+  background: rgba(230, 72, 63, 0.1);
+  color: var(--red);
+}
+
+.record-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--red);
+  flex: none;
+}
+
+.record-btn.recording .record-dot { animation: pulse 1s ease-in-out infinite; }
+
+.record-timer {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  flex: none;
+  min-width: 3.2rem;
+  text-align: right;
+}
+
+.record-btn.recording ~ .record-timer { color: var(--red); }
+
+.recording-status {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  min-height: 1rem;
+}
+
+.recording-status.error { color: var(--red); }
+.recording-status.done { color: var(--green); }
+
+/* New case */
+.new-case-row { margin-top: 1rem; }
+
+#btn-new-case {
+  width: 100%;
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  font-size: 0.88rem;
+  font-family: var(--font-sans);
+}
+
+#btn-new-case:active { background: var(--surface); }
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot::before, .mic-glyph, .record-dot { animation: none !important; }
+}
