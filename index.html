@@ -18,6 +18,13 @@
     <span class="status-dot" id="status-dot">Ready</span>
   </header>
 
+  <div class="voice-bar" id="voice-bar">
+    <button type="button" id="btn-voice-commands" class="voice-toggle">
+      <span class="mic-glyph"></span> Voice commands off
+    </button>
+    <span class="voice-heard" id="voice-heard"></span>
+  </div>
+
   <!-- Case details -->
   <div class="field-group">
     <div class="field mono">
@@ -123,8 +130,18 @@
   <div class="field-group notes-block">
     <div class="field">
       <label for="notes">Management Notes (during transportation)</label>
-      <textarea id="notes" placeholder="Type notes for now — voice-to-text arrives in Phase 2"></textarea>
-      <div class="notes-hint">Voice recording &amp; auto-transcription (Gemini) is Phase 2. Type manually for now.</div>
+
+      <div class="recorder" id="recorder">
+        <button type="button" id="btn-record" class="record-btn">
+          <span class="record-dot"></span>
+          <span id="record-label">Start recording</span>
+        </button>
+        <span class="record-timer" id="record-timer">00:00</span>
+      </div>
+      <div class="recording-status" id="recording-status"></div>
+
+      <textarea id="notes" placeholder="Transcript appears here after recording — you can edit it"></textarea>
+      <div class="notes-hint">Recording saves to Drive and is transcribed by Gemini. Blood pressure is auto-formatted as 125/56mmHg. Numbers are never altered.</div>
     </div>
   </div>
 
@@ -139,8 +156,8 @@
     <button type="button" id="btn-whatsapp">Send via WhatsApp</button>
   </div>
 
-  <div class="submit-row">
-    <button type="button" id="btn-submit">Save Case to Sheet</button>
+  <div class="new-case-row">
+    <button type="button" id="btn-new-case">Start new case</button>
   </div>
 
 </div>
