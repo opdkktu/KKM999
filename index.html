@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#15201C" />
+<title>Ambulance Transport Report</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <header class="app-header">
+    <h1>Transport Report</h1>
+    <span class="status-dot" id="status-dot">Ready</span>
+  </header>
+
+  <!-- Case details -->
+  <div class="field-group">
+    <div class="field mono">
+      <label for="case-id">Case ID</label>
+      <input type="text" id="case-id" placeholder="e.g. AH-2026-0914-03" />
+    </div>
+
+    <div class="field">
+      <label for="location-text">Location</label>
+      <input type="text" id="location-text" placeholder="Location name / address" />
+      <button type="button" class="btn-locate" id="btn-mark-location">Mark current GPS location</button>
+    </div>
+
+    <div class="field">
+      <label for="case-type">Case Type</label>
+      <input type="text" id="case-type" placeholder="e.g. Trauma, Medical, MVA" />
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="amo-name">AMO</label>
+        <input type="text" id="amo-name" placeholder="Name" />
+      </div>
+      <div class="field">
+        <label for="pilot-name">Pilot</label>
+        <input type="text" id="pilot-name" placeholder="Name" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage stepper -->
+  <div class="stepper" id="stepper">
+
+    <div class="stage-card" data-stage="enRoute">
+      <div class="stage-num">1</div>
+      <div class="stage-body">
+        <div class="stage-title">En Route</div>
+        <div class="stage-sub">Bertolak / bergerak</div>
+        <div class="stage-time" data-time-for="enRoute"></div>
+      </div>
+      <button class="stage-btn" data-stage-btn="enRoute">Log</button>
+    </div>
+
+    <div class="stage-card" data-stage="atScene">
+      <div class="stage-num">2</div>
+      <div class="stage-body">
+        <div class="stage-title">At Scene</div>
+        <div class="stage-sub">Tiba di lokasi</div>
+        <div class="stage-time" data-time-for="atScene"></div>
+      </div>
+      <button class="stage-btn" data-stage-btn="atScene">Log</button>
+    </div>
+
+    <div class="stage-card" data-stage="depart">
+      <div class="stage-num">3</div>
+      <div class="stage-body">
+        <div class="stage-title">Depart</div>
+        <div class="stage-sub">Bertolak / transporting (2nd call)</div>
+        <div class="stage-time" data-time-for="depart"></div>
+      </div>
+      <button class="stage-btn" data-stage-btn="depart">Log</button>
+    </div>
+
+    <div class="stage-card" data-stage="atHospital">
+      <div class="stage-num">4</div>
+      <div class="stage-body">
+        <div class="stage-title">At Hospital</div>
+        <div class="stage-sub">Arrived — or mark outcome below if not applicable</div>
+        <div class="stage-time" data-time-for="atHospital"></div>
+      </div>
+      <button class="stage-btn" data-stage-btn="atHospital">Log</button>
+    </div>
+
+    <div class="stage-card" data-stage="atBase">
+      <div class="stage-num">5</div>
+      <div class="stage-body">
+        <div class="stage-title">At Base</div>
+        <div class="stage-sub">Sampai di klinik / base</div>
+        <div class="stage-time" data-time-for="atBase"></div>
+      </div>
+      <button class="stage-btn" data-stage-btn="atBase">Log</button>
+    </div>
+
+  </div>
+
+  <div class="field-group">
+    <div class="field">
+      <label for="hospital-name">Hospital (if applicable)</label>
+      <input type="text" id="hospital-name" placeholder="e.g. Hosp Jitra" />
+    </div>
+    <div class="field">
+      <label for="outcome">Outcome</label>
+      <select id="outcome">
+        <option value="Transported">Transported to hospital</option>
+        <option value="Confirmed Death">Confirmed death</option>
+        <option value="Refused">Refused transport</option>
+        <option value="Cancelled">Call cancelled</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Management notes -->
+  <div class="field-group notes-block">
+    <div class="field">
+      <label for="notes">Management Notes (during transportation)</label>
+      <textarea id="notes" placeholder="Type notes for now — voice-to-text arrives in Phase 2"></textarea>
+      <div class="notes-hint">Voice recording &amp; auto-transcription (Gemini) is Phase 2. Type manually for now.</div>
+    </div>
+  </div>
+
+  <!-- Report preview -->
+  <div class="report-preview">
+    <h2>Report Preview</h2>
+    <pre id="report-text"></pre>
+  </div>
+
+  <div class="action-row">
+    <button type="button" id="btn-copy">Copy Text</button>
+    <button type="button" id="btn-whatsapp">Send via WhatsApp</button>
+  </div>
+
+  <div class="submit-row">
+    <button type="button" id="btn-submit">Save Case to Sheet</button>
+  </div>
+
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <span id="loading-label">Saving case…</span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
