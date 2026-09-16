@@ -11,7 +11,18 @@
 </head>
 <body>
 
-<div class="app">
+<!-- PIN gate -->
+<div class="pin-gate" id="pin-gate" hidden>
+  <div class="pin-box">
+    <h2>Enter PIN</h2>
+    <p class="settings-note">Shared PIN for the ambulance team. Stored on this device after the first entry.</p>
+    <input type="password" id="pin-input" inputmode="numeric" placeholder="PIN" autocomplete="off" />
+    <button type="button" id="btn-pin-submit" class="pin-submit">Unlock</button>
+    <div class="settings-status" id="pin-error"></div>
+  </div>
+</div>
+
+<div class="app" id="app-root" hidden>
 
   <header class="app-header">
     <h1>Transport Report</h1>
@@ -21,7 +32,6 @@
     </div>
   </header>
 
-  <!-- Offline queue banner -->
   <div class="queue-banner" id="queue-banner" hidden>
     <span id="queue-text"></span>
     <button type="button" id="btn-sync-now">Retry</button>
@@ -34,11 +44,10 @@
     <span class="voice-heard" id="voice-heard"></span>
   </div>
 
-  <!-- Priority tagging -->
-  <div class="priority-row" role="group" aria-label="Case priority">
-    <button type="button" class="priority-chip active" data-priority="Normal">Normal</button>
-    <button type="button" class="priority-chip" data-priority="Urgent">⚠ Urgent</button>
-    <button type="button" class="priority-chip" data-priority="Red Zone">⬤ Red Zone</button>
+  <!-- Priority P1-P4 -->
+  <div class="field">
+    <label>Case Priority</label>
+    <div class="priority-row" id="priority-row" role="group" aria-label="Case priority"></div>
   </div>
 
   <!-- Case details -->
@@ -49,31 +58,30 @@
     </div>
 
     <div class="field">
-      <label for="location-text">Location</label>
-      <input type="text" id="location-text" placeholder="Location name / address" />
-      <button type="button" class="btn-locate" id="btn-mark-location">Mark current GPS location</button>
+      <label for="location-text">Scene Location</label>
+      <input type="text" id="location-text" placeholder="Captured automatically at scene — editable" />
+      <div class="detect-hint" id="location-hint"></div>
+      <button type="button" class="btn-locate" id="btn-mark-location">Capture location now</button>
     </div>
 
     <div class="field">
       <label for="case-type">Case Type</label>
-      <input type="text" id="case-type" placeholder="e.g. Trauma, Medical, MVA" />
+      <select id="case-type">
+        <option value="trauma">Trauma (MISTT)</option>
+        <option value="cva">Stroke / CVA (BEFAST)</option>
+        <option value="medical">Medical</option>
+      </select>
     </div>
 
     <div class="field-row">
       <div class="field">
         <label for="amo-select">AMO</label>
-        <select id="amo-select">
-          <option value="">Select…</option>
-          <option value="__other">Type manually…</option>
-        </select>
+        <select id="amo-select"><option value="">Select…</option><option value="__other">Type manually…</option></select>
         <input type="text" id="amo-name" placeholder="AMO name" hidden />
       </div>
       <div class="field">
         <label for="pilot-select">Pilot</label>
-        <select id="pilot-select">
-          <option value="">Select…</option>
-          <option value="__other">Type manually…</option>
-        </select>
+        <select id="pilot-select"><option value="">Select…</option><option value="__other">Type manually…</option></select>
         <input type="text" id="pilot-name" placeholder="Pilot name" hidden />
       </div>
     </div>
@@ -81,7 +89,6 @@
 
   <!-- Stage stepper -->
   <div class="stepper" id="stepper">
-
     <div class="stage-card" data-stage="enRoute">
       <div class="stage-num">1</div>
       <div class="stage-body">
@@ -96,7 +103,7 @@
       <div class="stage-num">2</div>
       <div class="stage-body">
         <div class="stage-title">At Scene</div>
-        <div class="stage-sub">Tiba di lokasi</div>
+        <div class="stage-sub">Captures scene location automatically</div>
         <div class="stage-time" data-time-for="atScene"></div>
       </div>
       <button class="stage-btn" data-stage-btn="atScene">Log</button>
@@ -131,8 +138,9 @@
       </div>
       <button class="stage-btn" data-stage-btn="atBase">Log</button>
     </div>
-
   </div>
+
+  <div class="kpi-line" id="kpi-line"></div>
 
   <div class="field-group">
     <div class="field">
@@ -151,11 +159,17 @@
     </div>
   </div>
 
-  <!-- Management notes -->
+  <!-- Casualties -->
+  <div class="section-head">
+    <h2>Casualties</h2>
+    <button type="button" id="btn-add-casualty" class="settings-btn">+ Add casualty</button>
+  </div>
+  <div id="casualty-list"></div>
+
+  <!-- Recording -->
   <div class="field-group notes-block">
     <div class="field">
-      <label for="notes">Management Notes (during transportation)</label>
-
+      <label>Voice Handover</label>
       <div class="recorder">
         <button type="button" id="btn-record" class="record-btn">
           <span class="record-dot"></span>
@@ -164,13 +178,33 @@
         <span class="record-timer" id="record-timer">00:00</span>
       </div>
       <div class="recording-status" id="recording-status"></div>
-
-      <textarea id="notes" placeholder="Transcript appears here after recording — you can edit it"></textarea>
-      <div class="notes-hint">Recording works with no signal. It saves on the phone first, then uploads and transcribes once you are back in coverage.</div>
+      <div class="notes-hint">Works with no signal. Saved on the phone first, then uploaded and structured when back in coverage. Pause, restart or correct yourself freely — the final version of each statement is what gets used.</div>
     </div>
   </div>
 
-  <!-- Report preview -->
+  <!-- Speaking guidance, shown while recording -->
+  <div class="guidance" id="guidance" hidden>
+    <div class="guidance-head">
+      <span id="guidance-protocol"></span>
+      <span id="guidance-progress"></span>
+    </div>
+    <div class="guidance-letter" id="guidance-letter">M</div>
+    <div class="guidance-title" id="guidance-title"></div>
+    <div class="guidance-hint" id="guidance-hint"></div>
+    <div class="guidance-example" id="guidance-example"></div>
+    <div class="guidance-nav">
+      <button type="button" id="btn-guide-prev">Back</button>
+      <button type="button" id="btn-guide-next">Next</button>
+    </div>
+  </div>
+
+  <div class="field-group">
+    <div class="field">
+      <label for="general-notes">General notes</label>
+      <textarea id="general-notes" placeholder="Anything not tied to one casualty"></textarea>
+    </div>
+  </div>
+
   <div class="report-preview">
     <h2>Report Preview</h2>
     <pre id="report-text"></pre>
@@ -187,19 +221,17 @@
 
 </div>
 
-<!-- Settings sheet -->
+<!-- Settings -->
 <div class="sheet-backdrop" id="settings-backdrop" hidden></div>
 <div class="settings-sheet" id="settings-sheet" hidden>
   <div class="settings-head">
     <h2>Settings</h2>
     <button type="button" id="btn-close-settings" class="icon-btn" aria-label="Close">✕</button>
   </div>
-
   <div class="settings-body">
-
     <section>
       <h3>Gemini API key</h3>
-      <p class="settings-note">Leave blank to use the shared key on the server. Enter your own key from Google AI Studio to use your personal quota instead. Stored only on this device.</p>
+      <p class="settings-note">Leave blank to use the shared key on the server. Enter your own from Google AI Studio to use your personal quota. Stored only on this device.</p>
       <input type="password" id="personal-api-key" placeholder="Your Gemini API key (optional)" />
       <button type="button" id="btn-save-key" class="settings-btn">Save key</button>
       <div class="settings-status" id="key-status"></div>
@@ -207,13 +239,12 @@
 
     <section>
       <h3>Location calibration</h3>
-      <p class="settings-note">Stand at the location, then tap Set. This stores exact coordinates on this device and overrides the defaults.</p>
+      <p class="settings-note">Stand at the location, then tap Set. Stores exact coordinates on this device.</p>
       <div id="location-calibration"></div>
     </section>
 
     <section>
       <h3>Pending uploads</h3>
-      <p class="settings-note">Recordings and case edits waiting for a connection.</p>
       <div class="settings-status" id="pending-detail">None</div>
       <button type="button" id="btn-force-sync" class="settings-btn">Sync now</button>
     </section>
@@ -224,6 +255,10 @@
       <div class="settings-status" id="staff-status"></div>
     </section>
 
+    <section>
+      <h3>PIN</h3>
+      <button type="button" id="btn-forget-pin" class="settings-btn">Forget PIN on this device</button>
+    </section>
   </div>
 </div>
 
