@@ -23,6 +23,7 @@ const state = {
   recordingUrl: "",
   priority: "",
   casualties: [],
+  documents: { referral: "", aor: "" },
   pin: "",
   apiKey: "",
   coordOverrides: {},
@@ -305,6 +306,32 @@ function renderCasualties() {
     });
     card.appendChild(vg);
 
+    /* Monitor photo -> suggested vitals (tap to accept, never auto-filled) */
+    const photoRow = document.createElement("div");
+    photoRow.className = "photo-row";
+
+    const photoBtn = document.createElement("label");
+    photoBtn.className = "photo-btn";
+    photoBtn.textContent = "📷 Photo of monitor";
+    const photoInput = document.createElement("input");
+    photoInput.type = "file";
+    photoInput.accept = "image/*";
+    photoInput.capture = "environment";
+    photoInput.hidden = true;
+    photoBtn.appendChild(photoInput);
+    photoRow.appendChild(photoBtn);
+
+    const suggestBox = document.createElement("div");
+    suggestBox.className = "vitals-suggestions";
+    photoRow.appendChild(suggestBox);
+    card.appendChild(photoRow);
+
+    photoInput.addEventListener("change", function () {
+      const file = photoInput.files[0];
+      if (file) handleMonitorPhoto(c, file, suggestBox, vg);
+      photoInput.value = "";
+    });
+
     /* ETA */
     card.appendChild(
       textField("T — ETA", c.eta, "e.g. 12 minutes to HSB", function (v) {
@@ -362,7 +389,148 @@ function normaliseVital(key, raw) {
   return v;
 }
 
-/* ---------- Speaking guidance ---------- */
+/* ---------- Monitor photo -> suggested vitals ----------
+   The photo and the reading are shown together, and every value requires an
+   explicit tap to accept. Nothing here ever writes into a vitals field on
+   its own — a misread display is a patient-safety risk if it lands in a
+   report unverified. */
+
+async function handleMonitorPhoto(casualty, file, suggestBox, vitalsGrid) {
+  suggestBox.innerHTML = "";
+  const thumb = document.createElement("img");
+  thumb.className = "photo-thumb";
+  thumb.src = URL.createObjectURL(file);
+  suggestBox.appendChild(thumb);
+
+  const status = document.createElement("div");
+  status.className = "recording-status";
+  status.textContent = "Reading photo…";
+  suggestBox.appendChild(status);
+
+  try {
+    const base64 = await blobToBase64(file);
+    const mime = file.type || "image/jpeg";
+
+    // Save the photo regardless of whether the reading succeeds — it is
+    // evidence for the record even if OCR can't make sense of it.
+    const filename = "monitor-" + (els.caseId.value.trim() || state.caseUid) + "-" +
+      (casualty.label || "casualty") + "-" + Date.now() + extForImage(mime);
+    callBackend("uploadImage", { imageBase64: base64, mimeType: mime, kind: "monitor", filename: filename })
+      .catch(function () {});
+
+    const r = await callBackend("extractVitals", { imageBase64: base64, mimeType: mime, apiKey: state.apiKey });
+    status.remove();
+
+    if (r.status !== "ok") {
+      const err = document.createElement("div");
+      err.className = "recording-status error";
+      err.textContent = "Could not read the photo: " + r.message;
+      suggestBox.appendChild(err);
+      return;
+    }
+
+    casualty._suggestion = r.suggestion;
+    renderVitalSuggestions(casualty, suggestBox, vitalsGrid);
+  } catch (e) {
+    status.textContent = "Could not process the photo";
+    status.className = "recording-status error";
+  }
+}
+
+function renderVitalSuggestions(casualty, suggestBox, vitalsGrid) {
+  const s = casualty._suggestion;
+  if (!s) return;
+
+  const existing = suggestBox.querySelector(".suggestion-list");
+  if (existing) existing.remove();
+
+  const list = document.createElement("div");
+  list.className = "suggestion-list";
+
+  if (s.confidence === "low") {
+    const warn = document.createElement("div");
+    warn.className = "recording-status error";
+    warn.textContent = "Low confidence reading — check the photo carefully before accepting";
+    list.appendChild(warn);
+  }
+
+  const fields = [["bp", "BP"], ["pulse", "Pulse"], ["resp", "Resp"], ["spo2", "SpO2"], ["glucose", "Glucose"]];
+  fields.forEach(function (f) {
+    const val = s[f[0]];
+    if (!val) return;
+
+    const row = document.createElement("div");
+    row.className = "suggestion-row";
+
+    const label = document.createElement("span");
+    label.textContent = f[1] + ": " + val;
+    row.appendChild(label);
+
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.textContent = "Accept";
+    accept.addEventListener("click", function () {
+      casualty.vitals[f[0]] = val;
+      casualty._suggestion[f[0]] = ""; // don't re-offer an accepted value
+      row.classList.add("accepted");
+      accept.textContent = "✓ Accepted";
+      accept.disabled = true;
+      renderCasualties();
+      renderReport();
+      scheduleSave(0);
+    });
+    row.appendChild(accept);
+    list.appendChild(row);
+  });
+
+  if (s.notes) {
+    const note = document.createElement("div");
+    note.className = "suggestion-note";
+    note.textContent = "Note: " + s.notes;
+    list.appendChild(note);
+  }
+
+  suggestBox.appendChild(list);
+}
+
+function extForImage(mime) {
+  if (mime.indexOf("png") > -1) return ".png";
+  if (mime.indexOf("webp") > -1) return ".webp";
+  return ".jpg";
+}
+
+/* ---------- Case-level documents (referral letter / AOR form) ---------- */
+
+function wireDocumentCapture(inputId, kind) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.addEventListener("change", async function () {
+    const file = input.files[0];
+    input.value = "";
+    if (!file) return;
+
+    const statusId = kind + "-doc-status";
+    const statusEl = document.getElementById(statusId);
+    if (statusEl) statusEl.textContent = "Uploading…";
+
+    try {
+      const base64 = await blobToBase64(file);
+      const mime = file.type || "image/jpeg";
+      const filename = kind + "-" + (els.caseId.value.trim() || state.caseUid) + "-" + Date.now() + extForImage(mime);
+      const r = await callBackend("uploadImage", { imageBase64: base64, mimeType: mime, kind: kind, filename: filename });
+      if (r.status === "ok") {
+        state.documents[kind] = r.url;
+        if (statusEl) statusEl.innerHTML = "Attached — <a href='" + r.url + "' target='_blank'>view</a>";
+        renderReport();
+        scheduleSave(0);
+      } else if (statusEl) {
+        statusEl.textContent = "Upload failed: " + r.message;
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = "Could not upload — check connection";
+    }
+  });
+}
 let guideIdx = 0;
 
 function guidanceSteps() {
@@ -437,6 +605,8 @@ function buildPayload() {
     pilot: currentName("pilot"),
     recordingUrl: state.recordingUrl,
     generalNotes: els.generalNotes.value.trim(),
+    referralUrl: state.documents.referral,
+    aorUrl: state.documents.aor,
     casualties: state.casualties
   };
 }
@@ -1155,6 +1325,12 @@ function buildReport() {
     lines.push("", "📝 Notes: " + els.generalNotes.value.trim());
   }
 
+  if (state.documents.referral || state.documents.aor) {
+    lines.push("", "📎 DOCUMENTS");
+    if (state.documents.referral) lines.push("Referral letter: " + state.documents.referral);
+    if (state.documents.aor) lines.push("AOR form: " + state.documents.aor);
+  }
+
   lines.push("", "👥 TEAM");
   lines.push("AMO: " + (currentName("amo") || "-"));
   lines.push("Pilot: " + (currentName("pilot") || "-"));
@@ -1197,6 +1373,7 @@ document.getElementById("btn-new-case").addEventListener("click", async function
   state.recordingUrl = "";
   state.priority = "";
   state.casualties = [];
+  state.documents = { referral: "", aor: "" };
   state.dirty = false;
 
   [els.caseId, els.locationText, els.hospital, els.generalNotes].forEach(function (el) { el.value = ""; });
@@ -1204,6 +1381,10 @@ document.getElementById("btn-new-case").addEventListener("click", async function
   els.hospitalHint.textContent = "";
   els.locationHint.textContent = "";
   els.kpiLine.innerHTML = "";
+  ["referral-doc-status", "aor-doc-status"].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "";
+  });
 
   document.querySelectorAll(".priority-chip").forEach(function (c) { c.classList.remove("active"); });
   document.querySelectorAll(".stage-card").forEach(function (card) {
@@ -1254,6 +1435,8 @@ async function boot() {
   }
 
   await loadStaff(false);
+  wireDocumentCapture("referral-input", "referral");
+  wireDocumentCapture("aor-input", "aor");
   renderCasualties();
   renderReport();
   setStatus(navigator.onLine ? "Ready" : "Offline", navigator.onLine ? "" : "offline");
