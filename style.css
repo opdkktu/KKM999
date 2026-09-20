@@ -967,3 +967,221 @@ body {
 
 .kpi-line .over { color: var(--red); }
 .kpi-line .under { color: var(--green); }
+
+/* ===== Phase 6 additions ===== */
+
+.photo-row { margin-top: 0.6rem; }
+
+.photo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.82rem;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.photo-btn:active { background: var(--border); }
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.6rem;
+}
+
+.doc-btn { flex: none; }
+
+.photo-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin: 0.6rem 0;
+  object-fit: contain;
+  background: #000;
+}
+
+.vitals-suggestions { margin-top: 0.4rem; }
+
+.suggestion-list {
+  background: var(--surface-raised);
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  padding: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.suggestion-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+
+.suggestion-row.accepted { opacity: 0.55; }
+
+.suggestion-row button {
+  flex: none;
+  background: var(--amber);
+  color: var(--amber-ink);
+  border: none;
+  border-radius: 7px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+.suggestion-row.accepted button {
+  background: var(--surface);
+  color: var(--green);
+}
+
+.suggestion-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  margin-top: 0.3rem;
+  font-style: italic;
+}
+
+/* Admin dashboard */
+.admin-app { max-width: 640px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+
+.admin-header h1 { font-size: 1.1rem; margin: 0; font-weight: 600; }
+
+.month-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.month-picker input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.month-picker button {
+  background: var(--amber);
+  color: var(--amber-ink);
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+.kpi-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.kpi-card .kpi-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.kpi-card .kpi-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.kpi-card.good .kpi-value { color: var(--green); }
+.kpi-card.bad .kpi-value { color: var(--red); }
+
+.admin-section {
+  margin-bottom: 1.75rem;
+}
+
+.admin-section h2 {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0 0 0.6rem;
+  font-weight: 500;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.bar-label {
+  width: 6rem;
+  flex: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.bar-track {
+  flex: 1;
+  background: var(--surface);
+  border-radius: 6px;
+  height: 1.4rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--amber);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--amber-ink);
+  font-weight: 600;
+  min-width: 1.6rem;
+}
+
+.bar-fill.p1 { background: var(--red); color: #fff; }
+.bar-fill.p2 { background: var(--amber); }
+.bar-fill.p3 { background: var(--green); }
+.bar-fill.p4 { background: var(--text-muted); }
+
+.admin-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 2rem 0;
+}
