@@ -1,4 +1,4 @@
-const CACHE_NAME = "ambulance-report-v5";
+const CACHE_NAME = "ambulance-report-v6";
 const SHELL_FILES = [
   "./",
   "./index.html",
