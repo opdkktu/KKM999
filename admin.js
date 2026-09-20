@@ -1,0 +1,130 @@
+const BACKEND_URL =
+  "https://script.google.com/macros/s/AKfycbz-vpBAMA4nzRY11QsACuRMq8D6nmnBEni-a5_BNAUIsjJyTk1y8p2P6lDTcOgvTM7D/exec";
+
+let adminPin = "8888";
+
+const els = {};
+["pin-gate", "pin-input", "pin-error", "admin-root", "status-dot", "month-input",
+ "content", "loading-overlay", "loading-label", "toast"].forEach(function (id) {
+  els[id.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase(); })] = document.getElementById(id);
+});
+
+/* Default the picker to the current month. */
+(function () {
+  const d = new Date();
+  els.monthInput.value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+})();
+
+document.getElementById("btn-pin-submit").addEventListener("click", submitPin);
+els.pinInput.addEventListener("keydown", function (e) { if (e.key === "Enter") submitPin(); });
+
+async function submitPin() {
+  const pin = els.pinInput.value.trim();
+  els.pinError.textContent = "Checking…";
+  try {
+    const r = await call("checkAdminPin", { adminPin: pin });
+    if (r.status === "ok") {
+      adminPin = pin;
+      els.pinGate.hidden = true;
+      els.adminRoot.hidden = false;
+      loadMonth();
+    } else {
+      els.pinError.textContent = r.message || "Incorrect PIN";
+    }
+  } catch (e) {
+    els.pinError.textContent = "No connection — cannot verify PIN right now";
+  }
+}
+
+async function call(action, body) {
+  const res = await fetch(BACKEND_URL, {
+    method: "POST",
+    body: JSON.stringify(Object.assign({ action: action }, body))
+  });
+  return res.json();
+}
+
+document.getElementById("btn-load").addEventListener("click", loadMonth);
+
+async function loadMonth() {
+  const month = els.monthInput.value;
+  if (!month) return;
+
+  showOverlay("Loading " + month + "…");
+  try {
+    const r = await call("getAnalytics", { adminPin: adminPin, month: month });
+    if (r.status !== "ok") {
+      els.content.innerHTML = '<div class="admin-empty">' + escapeHtml(r.message || "Could not load") + "</div>";
+      return;
+    }
+    render(r);
+  } catch (e) {
+    els.content.innerHTML = '<div class="admin-empty">No connection — try again when online.</div>';
+  } finally {
+    hideOverlay();
+  }
+}
+
+function render(d) {
+  if (!d.totalCases) {
+    els.content.innerHTML = '<div class="admin-empty">No cases recorded for ' + d.month + '.</div>';
+    return;
+  }
+
+  const kpiOk = d.kpiCompliancePct !== null && d.kpiCompliancePct >= 80;
+  const parts = [];
+
+  parts.push('<div class="kpi-cards">');
+  parts.push(kpiCard(d.totalCases, "Total cases", ""));
+  parts.push(kpiCard(d.avgResponseMin !== null ? d.avgResponseMin + " min" : "—", "Avg response time (en route → scene)", ""));
+  parts.push(kpiCard(d.kpiCompliancePct !== null ? d.kpiCompliancePct + "%" : "—", "Within 15-min KPI", kpiOk ? "good" : "bad"));
+  parts.push(kpiCard(d.totalActiveHours + " hrs", "Total active time (en route → base)", ""));
+  parts.push("</div>");
+
+  parts.push('<div class="admin-section"><h2>Cases by priority</h2>');
+  const priOrder = ["P1", "P2", "P3", "P4", "Unset"];
+  const maxPri = Math.max.apply(null, priOrder.map(function (k) { return d.byPriority[k] || 0; }).concat([1]));
+  priOrder.forEach(function (k) {
+    const n = d.byPriority[k] || 0;
+    if (!n && k === "Unset") return;
+    parts.push(barRow(k, n, maxPri, "p" + k.slice(1).toLowerCase()));
+  });
+  parts.push("</div>");
+
+  parts.push('<div class="admin-section"><h2>Cases per day</h2>');
+  const maxDay = Math.max.apply(null, d.byDay.map(function (r) { return r.count; }).concat([1]));
+  d.byDay.forEach(function (r) {
+    parts.push(barRow(r.date.slice(-2), r.count, maxDay, ""));
+  });
+  parts.push("</div>");
+
+  parts.push('<div class="admin-section"><h2>Cases per crew</h2>');
+  const maxCrew = Math.max.apply(null, d.byCrew.map(function (r) { return r.cases; }).concat([1]));
+  d.byCrew.forEach(function (r) {
+    parts.push(barRow(r.crew, r.cases, maxCrew, ""));
+  });
+  parts.push("</div>");
+
+  els.content.innerHTML = parts.join("");
+}
+
+function kpiCard(value, label, cls) {
+  return '<div class="kpi-card ' + cls + '"><div class="kpi-value">' + escapeHtml(String(value)) +
+    '</div><div class="kpi-label">' + escapeHtml(label) + "</div></div>";
+}
+
+function barRow(label, value, max, cls) {
+  const pct = Math.max(6, Math.round((value / max) * 100));
+  return '<div class="bar-row"><span class="bar-label">' + escapeHtml(String(label)) +
+    '</span><div class="bar-track"><div class="bar-fill ' + cls + '" style="width:' + pct + '%">' +
+    value + "</div></div></div>";
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+function showOverlay(label) { els.loadingLabel.textContent = label; els.loadingOverlay.classList.add("visible"); }
+function hideOverlay() { els.loadingOverlay.classList.remove("visible"); }
