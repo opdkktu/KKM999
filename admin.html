@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#15201C" />
+<title>Ambulance Report — Admin</title>
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="pin-gate" id="pin-gate">
+  <div class="pin-box">
+    <h2>Admin PIN</h2>
+    <p class="settings-note">Separate from the responder PIN. Not stored on this device — enter it each visit.</p>
+    <input type="password" id="pin-input" inputmode="numeric" placeholder="Admin PIN" autocomplete="off" />
+    <button type="button" id="btn-pin-submit" class="pin-submit">Unlock</button>
+    <div class="settings-status" id="pin-error"></div>
+  </div>
+</div>
+
+<div class="admin-app" id="admin-root" hidden>
+
+  <div class="admin-header">
+    <h1>Usage &amp; KPI Report</h1>
+    <span class="status-dot" id="status-dot">Ready</span>
+  </div>
+
+  <div class="month-picker">
+    <input type="month" id="month-input" />
+    <button type="button" id="btn-load">Load</button>
+  </div>
+
+  <div id="content">
+    <div class="admin-empty">Choose a month and tap Load.</div>
+  </div>
+
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <span id="loading-label">Loading…</span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="admin.js" defer></script>
+</body>
+</html>
