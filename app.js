@@ -1450,9 +1450,30 @@ async function boot() {
   drainQueue();
 }
 
-(if (HR_TOKEN()) {
+(async function init() {
+  // NEW: auto-login from the SIAGA session
+  if (HR_TOKEN()) {
     try {
       const w = await callBackendRaw("whoAmI", {});
       if (w.status === "ok") { state.who = w; showApp(); boot(); return; }
     } catch (e) {}
-  })();
+  }
+  const saved = await Store.getMeta("pin");
+  if (saved) {
+    state.pin = saved;
+    showApp();
+    boot();
+    return;
+  }
+  // No PIN stored. If the backend has no PIN configured, go straight in.
+  try {
+    const r = await callBackendRaw("checkPin", { pin: "" });
+    if (r.status === "ok" && r.pinRequired === false) {
+      showApp(); boot(); return;
+    }
+  } catch (e) {
+    // Offline on a fresh device: nothing is cached, so the PIN must be entered
+    // once while online before the app can be used in the field.
+  }
+  els.pinGate.hidden = false;
+})();
