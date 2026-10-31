@@ -1,6 +1,6 @@
 const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token") || ""; } catch (e) { return ""; } };
 // ===== CONFIGURED =====
-const BACKEND_URL =
+const BACKEND_URL =fv
   "https://script.google.com/macros/s/AKfycbz-vpBAMA4nzRY11QsACuRMq8D6nmnBEni-a5_BNAUIsjJyTk1y8p2P6lDTcOgvTM7D/exec";
 // ======================
 
@@ -834,6 +834,10 @@ function logStage(stageKey) {
   if (stageKey === "atScene" || stageKey === "atBase" || stageKey === "atHospital") {
     captureGeolocation(stageKey);
   }
+  if (window.Trk) {
+    if (stageKey === "enRoute") Trk.autoStart(state.caseUid);   // starts GPS trail (inside the tap = iPhone-safe)
+    if (stageKey === "atBase")  Trk.autoStop();                  // trip finished
+  }
 }
 
 function updateStageCard(stageKey) {
@@ -1373,6 +1377,7 @@ document.getElementById("btn-new-case").addEventListener("click", async function
     : "Start a new case? The current case stays saved.";
   if (!confirm(msg)) return;
 
+   if (window.Trk) Trk.autoStop();                                // never carry a trail into the next case
   state.caseUid = newUid();
   state.stages = {};
   state.markedLocation = null;
