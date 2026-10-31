@@ -69,7 +69,7 @@ if ("serviceWorker" in navigator) {
 async function callBackend(action, body) {
   const res = await fetch(BACKEND_URL, {
     method: "POST",
-    body: JSON.stringify(Object.assign({ action: action, pin: state.pin }, body))
+    body: JSON.stringify(Object.assign({ action: action, pin: state.pin, hrToken: HR_TOKEN() }, body))
   });
   return res.json();
 }
@@ -107,7 +107,7 @@ async function submitPin() {
 async function callBackendRaw(action, body) {
   const res = await fetch(BACKEND_URL, {
     method: "POST",
-    body: JSON.stringify(Object.assign({ action: action }, body))
+    body: JSON.stringify(Object.assign({ action: action, hrToken: HR_TOKEN() }, body))
   });
   return res.json();
 }
@@ -1171,6 +1171,11 @@ function populateStaff(staff) {
     other.value = "__other"; other.textContent = "Type manually…";
     sel.appendChild(other);
     if (keep) sel.value = keep;
+    if (!keep && state.who) {   // auto-select the logged-in person as AMO/Pilot
+      const me = String(state.who.name || "").trim().toLowerCase();
+      const hit = Array.from(sel.options).find(o => o.value.trim().toLowerCase() === me);
+      if (hit) sel.value = hit.value;
+    }
   });
 }
 
@@ -1445,23 +1450,9 @@ async function boot() {
   drainQueue();
 }
 
-(async function init() {
-  const saved = await Store.getMeta("pin");
-  if (saved) {
-    state.pin = saved;
-    showApp();
-    boot();
-    return;
-  }
-  // No PIN stored. If the backend has no PIN configured, go straight in.
-  try {
-    const r = await callBackendRaw("checkPin", { pin: "" });
-    if (r.status === "ok" && r.pinRequired === false) {
-      showApp(); boot(); return;
-    }
-  } catch (e) {
-    // Offline on a fresh device: nothing is cached, so the PIN must be entered
-    // once while online before the app can be used in the field.
-  }
-  els.pinGate.hidden = false;
-})();
+(if (HR_TOKEN()) {
+    try {
+      const w = await callBackendRaw("whoAmI", {});
+      if (w.status === "ok") { state.who = w; showApp(); boot(); return; }
+    } catch (e) {}
+  })();
