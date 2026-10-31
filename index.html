@@ -29,6 +29,7 @@
     <h1>Transport Report</h1>
     <div class="header-right">
       <span class="status-dot" id="status-dot">Ready</span>
+      <button type="button" id="btn-track" class="icon-btn" aria-label="Track">📍</button>
       <button type="button" id="btn-settings" class="icon-btn" aria-label="Settings">⚙</button>
     </div>
   </header>
@@ -286,11 +287,21 @@
   <div class="spinner"></div>
   <span id="loading-label">Working…</span>
 </div>
-
+ <div id="trk" hidden style="position:fixed;inset:0;z-index:9000;background:#fff;display:flex;flex-direction:column;">
+  <div id="trk-map" style="flex:1;"></div>
+  <div style="padding:12px 16px;font:600 15px sans-serif;display:flex;gap:16px;justify-content:space-around;">
+    <span id="trk-dist">0.00 km</span><span id="trk-time">00:00</span><span id="trk-spd">0.0 km/h</span>
+  </div>
+  <div style="display:flex;gap:10px;padding:0 16px 16px;">
+    <button id="trk-toggle" style="flex:2;min-height:52px;border:0;border-radius:14px;background:#0F5C56;color:#fff;font-weight:800;">▶ Start</button>
+    <button id="trk-close" style="flex:1;min-height:52px;border-radius:14px;border:1.5px solid #ccc;background:#fff;">Close</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="config.js" defer></script>
 <script src="storage.js" defer></script>
 <script src="app.js" defer></script>
+<script src="track.js" defer></script>
 </body>
 </html>
