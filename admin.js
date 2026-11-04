@@ -4,7 +4,7 @@ const BACKEND_URL =
 let adminPin = "8888";
 
 /* ---- on-screen + console log (set DEBUG = false when everything works) ---- */
-const DEBUG = true, T0 = Date.now();
+const DEBUG = false, T0 = Date.now();
 function dbg(m) {
   const line = "[" + ((Date.now() - T0) / 1000).toFixed(1) + "s] " + m;
   console.log("[KKM999 admin]", line);
