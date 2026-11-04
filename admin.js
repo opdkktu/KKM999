@@ -11,7 +11,14 @@ function dbg(m) {
   if (!DEBUG) return;
   try {
     let b = document.getElementById("dbg");
-    if (!b) { b = document.createElement("pre"); b.id = "dbg"; b.style.cssText = "position:fixed;left:0;right:0;bottom:0;max-height:40vh;overflow:auto;margin:0;padding:8px 10px;background:rgba(0,0,0,.85);color:#9fe;font:11px/1.45 monospace;z-index:99999;white-space:pre-wrap;word-break:break-all"; document.body.appendChild(b); }
+    if (!b) {
+      const w = document.createElement("div"); w.id = "dbgw"; w.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.88)";
+      const x = document.createElement("button"); x.textContent = "✕ tutup"; x.style.cssText = "position:absolute;right:6px;top:4px;background:#333;color:#fff;border:0;border-radius:8px;padding:5px 10px;font:12px sans-serif;cursor:pointer;z-index:2";
+      x.onclick = function () { w.remove(); window.__dbgOff = true; };
+      b = document.createElement("pre"); b.id = "dbg"; b.style.cssText = "max-height:36vh;overflow:auto;margin:0;padding:8px 10px;padding-top:30px;color:#9fe;font:11px/1.45 monospace;white-space:pre-wrap;word-break:break-all";
+      w.appendChild(x); w.appendChild(b); document.body.appendChild(w);
+    }
+    if (window.__dbgOff) return;
     b.textContent += line + "\n"; b.scrollTop = b.scrollHeight;
   } catch (e) {}
 }
