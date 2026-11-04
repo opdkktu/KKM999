@@ -9,8 +9,8 @@ const CONFIG = {
   MATCH_RADIUS_M: 800,
 
   HOSPITALS: [
-    { name: "Hospital Jitra", lat: 6.240404, lng: 100.246714 },
-    { name: "Hospital Sultanah Bahiyah", lat: 6.16200, lng: 100.36400 }
+    { name: "Hospital Jitra", lat: 6.278847049133349, lng: 100.41950350266504},
+    { name: "Hospital Sultanah Bahiyah", lat: 6.148821990358223, lng: 100.4079043015984 }
   ],
 
   BASE: { name: "Klinik Kesihatan Ayer Hitam", lat: 6.240404, lng: 100.246714 },
