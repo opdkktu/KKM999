@@ -1,12 +1,16 @@
 /* KKM999 — admin: trip list + map replay (bird's-eye / satellite), ambulance icon, Strava-style speed trail. */
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbz-vpBAMA4nzRY11QsACuRMq8D6nmnBEni-a5_BNAUIsjJyTk1y8p2P6lDTcOgvTM7D/exec";
 const $ = id => document.getElementById(id);
+const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token") || ""; } catch (e) { return ""; } };
 let pin = "", map, street, sat, isSat = false, casing, progress = [], amb, startM, endM;
+let CASE = null, stages = [], pauseUntil = 0, noteTimer = 0, notePhase = -2, sumShown = false;
 let run = null, P = [], T = [], cum = [], D = [], total = 0, head = 0, playing = false, speedX = 0, rafId = 0, last = 0, drawnTo = 0, liveT = 0, maxKmh = 0, hd = 0;
+const STG = [["enRoute", "Bertolak (En route)", "🚑", "#2FAE98", "🚑 Dalam perjalanan ke lokasi"], ["atScene", "Tiba di lokasi", "📍", "#F2A93B", "📍 Di lokasi kejadian"],
+  ["depart", "Bawa pesakit ke hospital", "🛏️", "#1d7fd1", "🛏️ Mengangkut pesakit ke hospital"], ["atHospital", "Tiba di hospital", "🏥", "#E6483F", "🏥 Di hospital"], ["atBase", "Tiba di pangkalan", "🏁", "#8E5BD6", "🏁 Kembali ke pangkalan"]];
 const GAP_MS = 90000, GAP_PLAY = 3000;                   // a pause / lost signal > 90 s is skipped quickly in the replay
 
 async function call(action, body) {
-  const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify(Object.assign({ action: action, adminPin: pin }, body)) });
+  const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify(Object.assign({ action: action, adminPin: pin, hrToken: HR_TOKEN() }, body)) });
   return r.json();
 }
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -15,11 +19,15 @@ const fmtDur = ms => { const s = Math.round(ms / 1000); return (s >= 3600 ? Math
 const fmtClock = ms => { const d = new Date(ms); return d.toLocaleDateString("ms-MY", { day: "2-digit", month: "short" }) + " · " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
 
 /* ---------- gate + list ---------- */
+(async function autoUnlock() {            // superadmin opened this from SIAGA → straight in, no PIN
+  if (!HR_TOKEN()) return;
+  try { const r = await call("checkAdminPin", {}); if (r.status === "ok") { $("gate").style.display = "none"; $("list").hidden = false; loadList(); } } catch (e) {}
+})();
 $("go").onclick = unlock; $("pin").addEventListener("keydown", e => { if (e.key === "Enter") unlock(); });
 async function unlock() {
   const p = $("pin").value.trim(); $("perr").textContent = "Menyemak…";
   try {
-    const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify({ action: "checkAdminPin", adminPin: p }) }).then(x => x.json());
+    const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify({ action: "checkAdminPin", adminPin: p, hrToken: HR_TOKEN() }) }).then(x => x.json());
     if (r.status === "ok") { pin = p; $("gate").style.display = "none"; $("list").hidden = false; loadList(); } else $("perr").textContent = r.message || "PIN salah";
   } catch (e) { $("perr").textContent = "Tiada sambungan."; }
 }
@@ -56,6 +64,8 @@ async function openRun(id, label, live) {
   if (!r || r.status !== "ok" || r.pts.length < 2) { $("clock").textContent = (r && r.message) || "Trail kosong / terlalu pendek."; return; }
   run = { id: id, live: !!live };
   setPts(r.pts); drawBase();
+  CASE = null; try { const cr = await call("getRunCase", { runUid: id }); if (cr && cr.status === "ok") CASE = cr.c; } catch (e) {}
+  buildStages(); sumShown = false; $("sum").classList.remove("on"); notePhase = -2; $("notes").style.display = "none";
   head = 0; drawnTo = 0; maxKmh = 0; hd = bearingAt(0);
   amb = Amb.create(map, { follow: true }); amb.place(P[0][0], P[0][1], hd); $("follow").style.opacity = "1";
   const autoX = Math.max(1, Math.ceil(total / 45000)); buildSpeedButtons(live ? 1 : autoX);
@@ -102,17 +112,24 @@ function showAt(t) {
   $("sKm").textContent = km.toFixed(1); $("sTime").textContent = fmtDur(real - T[0]); $("sSpd").textContent = Math.round(segKmh(j)); $("sMax").textContent = Math.round(maxKmh);
   $("clock").textContent = fmtClock(real) + (run && run.live && t >= total - 50 ? "  ·  LIVE" : "");
   $("seek").value = total ? Math.round(t / total * 1000) : 0;
+  updateStages(t);
 }
 function seekUi() { showAt(head); }
 
 /* ---------- playback loop ---------- */
 function setPlaying(on) {
+  if (on) { $("sum").classList.remove("on"); }
   playing = on; $("play").textContent = on ? "❚❚" : "▶"; cancelAnimationFrame(rafId);
   if (on) { if (head >= total && !(run && run.live)) { head = 0; clearProgress(); } last = performance.now(); rafId = requestAnimationFrame(loop); }
 }
 function loop(now) {
-  const dt = now - last; last = now; head = Math.min(total, head + dt * speedX); showAt(head);
-  if (head >= total) { if (run && run.live) { rafId = requestAnimationFrame(loop); return; } setPlaying(false); return; }
+  const dt = now - last; last = now;
+  if (now < pauseUntil) { rafId = requestAnimationFrame(loop); return; }                       // linger a moment at each stage, like a recap video
+  const prev = head; head = Math.min(total, head + dt * speedX);
+  const hit = stages.find(s => !s.fired && s.cum > prev && s.cum <= head && s.key !== "enRoute");
+  if (hit) { head = hit.cum; pauseUntil = now + 1700; }
+  showAt(head);
+  if (head >= total) { if (run && run.live) { rafId = requestAnimationFrame(loop); return; } setPlaying(false); setTimeout(showSummary, 900); return; }
   rafId = requestAnimationFrame(loop);
 }
 $("play").onclick = () => setPlaying(!playing);
@@ -135,4 +152,78 @@ async function pollLive() {
   if (!playing) setPlaying(true);
 }
 function drawBase_keepProgress() { casing.setLatLngs(P.map(p => [p[0], p[1]])); if (endM) endM.setLatLng([P[P.length - 1][0], P[P.length - 1][1]]); }
-function stopAll() { playing = false; cancelAnimationFrame(rafId); clearInterval(liveT); if (amb) { amb.remove(); amb = null; } if (map) { progress.forEach(l => map.removeLayer(l)); progress = []; if (casing) map.removeLayer(casing); if (startM) map.removeLayer(startM); if (endM) map.removeLayer(endM); casing = startM = endM = null; } run = null; drawnTo = 0; }
+function stopAll() { playing = false; cancelAnimationFrame(rafId); clearInterval(liveT); if (amb) { amb.remove(); amb = null; } if (map) { progress.forEach(l => map.removeLayer(l)); progress = []; if (casing) map.removeLayer(casing); if (startM) map.removeLayer(startM); if (endM) map.removeLayer(endM); casing = startM = endM = null; } run = null; drawnTo = 0; clearStages(); $("sum").classList.remove("on"); $("notes").style.display = "none"; $("phase").style.display = "none"; }
+
+
+/* ================= recap: stages, phase chip, notes, summary ================= */
+function clearStages() { stages.forEach(s => { if (s.m) map.removeLayer(s.m); }); stages = []; clearInterval(noteTimer); }
+function stageMs(hm, base) {                         // "HH:mm" on the trip's date (or the next day if the trip crossed midnight)
+  const m = /(\d{1,2}):(\d{2})/.exec(hm || ""); if (!m) return 0;
+  const d = new Date(T[0]); d.setHours(+m[1], +m[2], 0, 0); let ms = d.getTime();
+  if (ms < T[0] - 45 * 60000) ms += 86400000; return ms;
+}
+function nearestIdx(ms) { let b = 0, bd = 1e18; for (let i = 0; i < T.length; i++) { const d = Math.abs(T[i] - ms); if (d < bd) { bd = d; b = i; } } return b; }
+function buildStages() {
+  clearStages(); if (!CASE) return;
+  let lastIdx = 0;
+  STG.forEach(def => {
+    const hm = CASE[def[0]]; if (!hm) return;
+    let idx = def[0] === "enRoute" ? 0 : nearestIdx(stageMs(hm)); if (idx < lastIdx) idx = lastIdx; lastIdx = idx;
+    stages.push({ key: def[0], label: def[1], icon: def[2], color: def[3], phase: def[4], hm: hm, idx: idx, cum: cum[idx], fired: false, m: null });
+  });
+  stages.forEach(s => {
+    const ic = L.divIcon({ className: "", iconSize: [1, 1], iconAnchor: [0, 0], html: '<div class="stg" style="--c:' + s.color + '"><b>' + s.icon + "</b><div><span>" + esc(s.label) + "</span><em>" + esc(s.hm) + "</em></div></div>" });
+    s.ic = ic; s.m = L.marker([P[s.idx][0], P[s.idx][1]], { icon: ic, interactive: false, zIndexOffset: 500 });
+  });
+}
+function updateStages(t) {
+  if (!stages.length) { $("phase").style.display = "none"; return; }
+  let cur = -1;
+  stages.forEach((s, i) => {
+    const pass = t >= s.cum - 0.5;
+    if (pass && !s.fired) { s.fired = true; s.m.addTo(map); }
+    else if (!pass && s.fired) { s.fired = false; map.removeLayer(s.m); }
+    if (pass) cur = i;
+    const el = s.m.getElement(); if (el) { const b = el.querySelector(".stg"); if (b) b.classList.toggle("old", pass && i < cur); }
+  });
+  stages.forEach((s, i) => { const el = s.m.getElement(); if (el) { const b = el.querySelector(".stg"); if (b) b.classList.toggle("old", i < cur); } });
+  const ph = $("phase"); ph.style.display = "";
+  const txt = cur < 0 ? "🚑 Menunggu bertolak" : stages[cur].phase;
+  if (ph.textContent !== txt) { ph.textContent = txt; ph.classList.remove("sw"); void ph.offsetWidth; ph.classList.add("sw"); }
+  updateNotes(cur);
+}
+function transportRange() {                           // phase index whose notes we show: from "depart" (or scene) until "at hospital"
+  const iD = stages.findIndex(s => s.key === "depart"), iS = stages.findIndex(s => s.key === "atScene"), iH = stages.findIndex(s => s.key === "atHospital");
+  return { from: iD >= 0 ? iD : iS, to: iH };
+}
+function updateNotes(cur) {
+  const box = $("notes"), r = transportRange(); if (r.from < 0) { box.style.display = "none"; return; }
+  const inTr = cur >= r.from && (r.to < 0 || cur < r.to), key = inTr ? r.from : -1;
+  if (key === notePhase) return; notePhase = key; clearInterval(noteTimer);
+  if (!inTr) { box.style.display = "none"; return; }
+  const parts = []; if (CASE.notes) parts.push(CASE.notes); (CASE.casualties || []).forEach((c, i) => parts.push("Pesakit " + (i + 1) + ": " + c));
+  const full = parts.join("\n").trim();
+  box.style.display = ""; box.style.animation = "none"; void box.offsetWidth; box.style.animation = "";
+  if (!full) { box.innerHTML = '<h4>🎙 Suara → teks</h4><div class="mut">Tiada nota / rakaman suara untuk perjalanan ini.</div>'; return; }
+  let i = 0; box.innerHTML = '<h4>🎙 Suara → teks</h4><div id="nt" class="cur"></div>';
+  const nt = $("nt"); noteTimer = setInterval(() => { i += 2; nt.textContent = full.slice(0, i); box.scrollTop = box.scrollHeight; if (i >= full.length) { clearInterval(noteTimer); nt.classList.remove("cur"); } }, 28);
+}
+function countUp(el, to, dec, ms, fmt) {
+  const t0 = performance.now(); const f = k => { const e = 1 - Math.pow(1 - k, 3); el.textContent = fmt ? fmt(to * e) : (to * e).toFixed(dec); if (k < 1) requestAnimationFrame(n => f(Math.min(1, (n - t0) / ms))); };
+  requestAnimationFrame(n => f(Math.min(1, (n - t0) / ms)));
+}
+function showSummary() {
+  if (!run || run.live || playing) return;
+  const km = D[D.length - 1] / 1000, ms = T[T.length - 1] - T[0];
+  const st = k => stages.find(s => s.key === k), resp = st("enRoute") && st("atScene") ? T[st("atScene").idx] - T[st("enRoute").idx] : 0, trn = st("depart") && st("atHospital") ? T[st("atHospital").idx] - T[st("depart").idx] : 0;
+  const avg = ms > 0 ? km / (ms / 3600000) : 0;
+  $("sum").innerHTML = '<div class="in"><h2>Perjalanan selesai 🏁</h2><div class="sub">' + esc($("ttl").textContent) + (CASE && CASE.hospital ? " · " + esc(CASE.hospital) : "") + '</div>' +
+    '<div class="big"><div class="box a"><b id="sumKm">0.0</b><span>Jumlah jarak (km)</span></div><div class="box b"><b id="sumT">00:00</b><span>Jumlah masa</span></div></div>' +
+    '<div class="row3"><div class="mini"><b>' + (resp ? fmtDur(resp) : "—") + '</b><span>Respon ke lokasi</span></div><div class="mini"><b>' + (trn ? fmtDur(trn) : "—") + '</b><span>Ke hospital</span></div><div class="mini"><b>' + Math.round(maxKmh) + '</b><span>Laju maks km/j</span></div></div>' +
+    '<div class="acts"><button class="btn ghost" id="sumClose">Tutup</button><button class="btn" id="sumAgain">↻ Main semula</button></div></div>';
+  $("sum").classList.add("on");
+  setTimeout(() => countUp($("sumKm"), km, 1, 1400), 450);
+  setTimeout(() => countUp($("sumT"), ms, 0, 1400, v => fmtDur(v)), 750);
+  $("sumClose").onclick = () => $("sum").classList.remove("on");
+  $("sumAgain").onclick = () => { head = 0; clearProgress(); notePhase = -2; stages.forEach(s => { if (s.fired) { s.fired = false; map.removeLayer(s.m); } }); pauseUntil = 0; setPlaying(true); };
+}
