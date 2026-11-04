@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15201C">
+<title>Rekod Perjalanan Ambulans</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{ --bg:#15201C; --card:#1D2D28; --ink:#EAF3EF; --mut:#9DB3AA; --line:#2C4239; --acc:#2FAE98; --blue:#1d7fd1; --red:#E6483F; --amber:#F2A93B; }
+  *{ box-sizing:border-box } html,body{ height:100%; margin:0 }
+  body{ background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .gate{ position:fixed; inset:0; display:grid; place-items:center; padding:20px; background:var(--bg); z-index:50 }
+  .gate .box{ width:100%; max-width:340px; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:22px }
+  input,select{ width:100%; background:#14211D; color:var(--ink); border:1px solid var(--line); border-radius:12px; padding:13px; font-size:16px }
+  .btn{ border:0; border-radius:12px; background:var(--acc); color:#06231D; font-weight:800; padding:13px 16px; font-size:15px; cursor:pointer; min-height:48px }
+  .btn.ghost{ background:transparent; border:1px solid var(--line); color:var(--ink) }
+  #list{ max-width:720px; margin:0 auto; padding:14px 14px 40px }
+  .top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px } .top h1{ font-size:18px; margin:0 } .top a{ color:var(--acc); text-decoration:none; font-weight:700; font-size:14px }
+  .filters{ display:flex; gap:8px; margin-bottom:12px } .filters select{ width:auto; flex:1 }
+  .run{ display:flex; gap:12px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:13px 14px; margin-bottom:10px; cursor:pointer; transition:transform .15s,border-color .2s }
+  .run:active{ transform:scale(.98) } .run:hover{ border-color:var(--acc) }
+  .run .ic{ font-size:26px } .run .m{ flex:1; min-width:0 } .run .t{ font-weight:700 } .run .s{ font-size:13px; color:var(--mut); margin-top:2px }
+  .live{ background:var(--red); color:#fff; font-size:11px; font-weight:800; padding:3px 8px; border-radius:99px; animation:bl 1.2s infinite } @keyframes bl{ 50%{ opacity:.45 } }
+  .empty{ text-align:center; color:var(--mut); padding:40px 10px; line-height:1.6 }
+  #mapView{ position:fixed; inset:0; display:none; flex-direction:column; background:#000; z-index:20 } #mapView.on{ display:flex }
+  #map{ flex:1; min-height:0 }
+  .hdr{ position:absolute; top:0; left:0; right:0; z-index:1000; display:flex; gap:8px; align-items:center; padding:calc(10px + env(safe-area-inset-top)) 10px 10px; pointer-events:none }
+  .hdr > *{ pointer-events:auto } .pill{ background:rgba(21,32,28,.92); color:var(--ink); border:0; border-radius:999px; padding:10px 14px; font-weight:700; font-size:14px; box-shadow:0 3px 12px rgba(0,0,0,.35); cursor:pointer }
+  .hdr .ttl{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .panel{ background:var(--card); border-top:1px solid var(--line); padding:12px 14px calc(14px + env(safe-area-inset-bottom)); }
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; text-align:center; margin-bottom:10px } .stats b{ display:block; font-size:18px; font-variant-numeric:tabular-nums } .stats span{ font-size:11px; color:var(--mut) }
+  .ctl{ display:flex; align-items:center; gap:10px } .play{ width:52px; height:52px; border-radius:50%; border:0; background:var(--acc); color:#06231D; font-size:22px; cursor:pointer; flex:none }
+  input[type=range]{ flex:1; padding:0; accent-color:var(--acc); height:34px }
+  .spd{ display:flex; gap:6px; margin-top:10px; justify-content:center; flex-wrap:wrap } .spd button{ border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:99px; padding:7px 13px; font-weight:700; cursor:pointer } .spd button.on{ background:var(--acc); color:#06231D; border-color:var(--acc) }
+  .clock{ text-align:center; font-size:12px; color:var(--mut); margin-bottom:6px }
+  .ov{ position:absolute; inset:0; z-index:1500; display:none; place-items:center; background:rgba(0,0,0,.5); color:#fff; font-weight:700 } .ov.on{ display:grid }
+  .leaflet-container{ background:#222 }
+  @media (prefers-reduced-motion:reduce){ .live{ animation:none } }
+</style>
+</head>
+<body>
+<div class="gate" id="gate"><div class="box">
+  <h2 style="margin:0 0 6px">Rekod perjalanan</h2>
+  <p style="margin:0 0 14px;color:var(--mut);font-size:14px;line-height:1.5">Masukkan PIN admin (sama seperti laporan penggunaan).</p>
+  <input id="pin" type="password" inputmode="numeric" placeholder="PIN admin" autocomplete="off">
+  <button class="btn" id="go" style="width:100%;margin-top:12px">Buka</button>
+  <div id="perr" style="color:var(--red);font-size:13px;margin-top:10px;min-height:18px"></div>
+</div></div>
+
+<div id="list" hidden>
+  <div class="top"><h1>🚑 Rekod Perjalanan</h1><a href="admin.html">← Laporan</a></div>
+  <div class="filters"><select id="days"><option value="7">7 hari</option><option value="30" selected>30 hari</option><option value="90">90 hari</option></select><button class="btn ghost" id="reload">↻ Muat semula</button></div>
+  <div id="runs"><div class="empty">Memuatkan…</div></div>
+</div>
+
+<div id="mapView">
+  <div class="hdr"><button class="pill" id="back">← Senarai</button><div class="pill ttl" id="ttl"></div><button class="pill" id="layer">🛰</button></div>
+  <div id="map"></div>
+  <div class="ov" id="ov">Memuatkan trail…</div>
+  <div class="panel">
+    <div class="clock" id="clock">—</div>
+    <div class="stats"><div><b id="sKm">0.0</b><span>km</span></div><div><b id="sTime">00:00</b><span>masa</span></div><div><b id="sSpd">0</b><span>km/j</span></div><div><b id="sMax">0</b><span>maks</span></div></div>
+    <div class="ctl"><button class="play" id="play" aria-label="Main / jeda">▶</button><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Garis masa"><button class="pill" id="follow">◎</button></div>
+    <div class="spd" id="spd"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="amb.js"></script>
+<script src="tracks.js"></script>
+</body>
+</html>
