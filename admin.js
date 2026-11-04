@@ -6,11 +6,13 @@ const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token
 
 /* Opened from SIAGA as a superadmin? Then no PIN is needed — SIAGA's login is the proof. */
 (async function autoUnlock() {
-  if (!HR_TOKEN()) return;
+  const note = t => { try { const e = document.getElementById("pin-error"); if (e && !/Checking|Ralat|lambat/.test(e.textContent)) e.textContent = t; } catch (x) {} };
+  if (!HR_TOKEN()) { note("v3 · tiada sesi SIAGA — buka dari menu dashboard SIAGA"); return; }
   try {
     const r = await call("checkAdminPin", {});
     if (r.status === "ok") { els.pinGate.hidden = true; els.adminRoot.hidden = false; loadMonth(); }
-  } catch (e) { /* fall back to the PIN box */ }
+    else note("v3 · sesi SIAGA ada, tetapi bukan superadmin / role belum dihantar (" + (r.message || "?") + ")");
+  } catch (e) { note("v3 · semakan SIAGA gagal: " + (e && e.message ? e.message : "?")); }
 })();
 
 const els = {};
