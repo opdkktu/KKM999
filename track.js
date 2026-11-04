@@ -227,3 +227,83 @@ function showSummary() {
   $("sumClose").onclick = () => $("sum").classList.remove("on");
   $("sumAgain").onclick = () => { head = 0; clearProgress(); notePhase = -2; stages.forEach(s => { if (s.fired) { s.fired = false; map.removeLayer(s.m); } }); pauseUntil = 0; setPlaying(true); };
 }
+
+
+/* ================= KML export (Google Maps "My Maps" / Google Earth) ================= */
+const kx = t => String(t == null ? "" : t).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const iso = ms => new Date(ms).toISOString();
+const coords = pts => pts.map(p => p[1].toFixed(6) + "," + p[0].toFixed(6) + ",0").join(" ");
+const KML_HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>\n';
+function kmlStyles() { return '<Style id="route"><LineStyle><color>ffd17f1d</color><width>4</width></LineStyle></Style><Style id="stage"><IconStyle><scale>1.1</scale><Icon><href>https://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon></IconStyle></Style>\n'; }
+function kmlLine(name, pts, desc, color) {
+  const st = color ? '<Style><LineStyle><color>' + color + '</color><width>4</width></LineStyle></Style>' : '<styleUrl>#route</styleUrl>';
+  return '<Placemark><name>' + kx(name) + '</name><description>' + kx(desc) + '</description><TimeSpan><begin>' + iso(pts[0][2]) + '</begin><end>' + iso(pts[pts.length - 1][2]) + '</end></TimeSpan>' + st + '<LineString><tessellate>1</tessellate><coordinates>' + coords(pts) + '</coordinates></LineString></Placemark>\n';
+}
+function saveKml(file, body) {
+  const blob = new Blob([KML_HEAD + body + "</Document></kml>"], { type: "application/vnd.google-earth.kml+xml" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function hsl2kml(h) { const c = (n, k = (n + h / 30) % 12) => Math.round(255 * (0.5 - 0.4 * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); return "ff" + [c(4), c(8), c(0)].map(v => v.toString(16).padStart(2, "0")).join(""); }   // aabbggrr
+$("kmlOne").onclick = () => {
+  if (!P.length) return;
+  const label = $("ttl").textContent, km = (D[D.length - 1] / 1000).toFixed(1);
+  let body = kmlStyles() + kmlLine("Perjalanan " + label, P, (CASE && CASE.hospital ? "Hospital: " + CASE.hospital + ". " : "") + km + " km, " + fmtDur(T[T.length - 1] - T[0]));
+  stages.forEach(s => { body += '<Placemark><name>' + kx(s.label + " " + s.hm) + '</name><TimeStamp><when>' + iso(T[s.idx]) + '</when></TimeStamp><styleUrl>#stage</styleUrl><Point><coordinates>' + P[s.idx][1].toFixed(6) + "," + P[s.idx][0].toFixed(6) + ',0</coordinates></Point></Placemark>\n'; });
+  saveKml("ambulans-" + new Date(T[0]).toISOString().slice(0, 16).replace(/[:T]/g, "") + ".kml", body);
+};
+
+/* ================= Monthly map: every response line on one map, filter by date ================= */
+let mmap, mStreet, mSat, mIsSat = false, mLayers = [], mRuns = [];
+const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+function ensureMMap() {
+  if (mmap) return;
+  mmap = L.map("mmap", { zoomControl: false }).setView([6.2404, 100.2467], 11);
+  mStreet = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(mmap);
+  mSat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Esri" });
+}
+$("tabMonth").onclick = () => { $("list").hidden = true; $("monthView").classList.add("on"); ensureMMap(); setTimeout(() => mmap.invalidateSize(), 60); if (!$("dFrom").value) setQuick("month"); else loadMonthMap(); };
+$("tabList").onclick = () => {};
+$("mBack").onclick = () => { $("monthView").classList.remove("on"); $("list").hidden = false; };
+$("mLayer").onclick = () => { mIsSat = !mIsSat; if (mIsSat) { mmap.addLayer(mSat); mmap.removeLayer(mStreet); } else { mmap.addLayer(mStreet); mmap.removeLayer(mSat); } $("mLayer").textContent = mIsSat ? "🗺" : "🛰"; };
+function setQuick(q) {
+  const n = new Date(); let a = new Date(n), b = new Date(n);
+  if (q === "7") a.setDate(n.getDate() - 6); else if (q === "90") a.setDate(n.getDate() - 89);
+  else if (q === "month") a = new Date(n.getFullYear(), n.getMonth(), 1);
+  else if (q === "prev") { a = new Date(n.getFullYear(), n.getMonth() - 1, 1); b = new Date(n.getFullYear(), n.getMonth(), 0); }
+  $("dFrom").value = ymd(a); $("dTo").value = ymd(b);
+  [].forEach.call($("quick").children, c => c.classList.toggle("on", c.dataset.q === q));
+  loadMonthMap();
+}
+$("quick").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setQuick(b.dataset.q); });
+$("dFrom").onchange = $("dTo").onchange = () => { [].forEach.call($("quick").children, c => c.classList.remove("on")); loadMonthMap(); };
+async function loadMonthMap() {
+  const from = $("dFrom").value, to = $("dTo").value || from; if (!from) return;
+  $("mov").classList.add("on"); mLayers.forEach(l => mmap.removeLayer(l)); mLayers = [];
+  let r; try { r = await call("getRunsMap", { from: from, to: to }); } catch (e) { r = null; }
+  $("mov").classList.remove("on");
+  if (!r || r.status !== "ok") { $("mstat").textContent = (r && r.message) || "Tidak dapat memuatkan."; mRuns = []; return; }
+  mRuns = r.runs; if (!mRuns.length) { $("mstat").textContent = "Tiada perjalanan dalam tempoh ini."; return; }
+  const all = [];
+  mRuns.forEach((x, i) => {
+    const ll = x.pts.map(p => [p[0], p[1]]); all.push.apply(all, ll);
+    const hue = (i * 47) % 360, col = "hsl(" + hue + ",85%,55%)";
+    const casing = L.polyline(ll, { color: "#fff", weight: 7, opacity: .35 }).addTo(mmap);
+    const line = L.polyline(ll, { color: col, weight: 4, opacity: .8, lineCap: "round", lineJoin: "round" }).addTo(mmap);
+    line.bindPopup('<b>' + kx(fmtClock(x.start)) + '</b><br>' + kx(x.name || "Responder") + '<br>' + x.km + ' km · ' + fmtDur(x.end - x.start) + '<br><button data-open="' + i + '">▶ Main semula</button>');
+    line.on("mouseover", () => line.setStyle({ weight: 7, opacity: 1 })); line.on("mouseout", () => line.setStyle({ weight: 4, opacity: .8 }));
+    mLayers.push(casing, line);
+    mLayers.push(L.circleMarker(ll[0], { radius: 4, color: "#fff", weight: 1.5, fillColor: "#2FAE98", fillOpacity: 1 }).addTo(mmap));
+    mLayers.push(L.circleMarker(ll[ll.length - 1], { radius: 4, color: "#fff", weight: 1.5, fillColor: "#E6483F", fillOpacity: 1 }).addTo(mmap));
+  });
+  mmap.fitBounds(L.latLngBounds(all), { padding: [40, 40] });
+  const km = mRuns.reduce((a, x) => a + x.km, 0), ms = mRuns.reduce((a, x) => a + (x.end - x.start), 0);
+  $("mstat").innerHTML = "<b>" + mRuns.length + "</b> perjalanan · <b>" + km.toFixed(1) + "</b> km · <b>" + fmtDur(ms) + "</b> jumlah masa";
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (!b) return; const x = mRuns[Number(b.dataset.open)]; if (!x) return; mmap.closePopup(); $("monthView").classList.remove("on"); openRun(x.runUid, fmtClock(x.start), false); });
+$("mKml").onclick = () => {
+  if (!mRuns.length) return;
+  const byDay = {}; mRuns.forEach((x, i) => { const d = ymd(new Date(x.start)); (byDay[d] = byDay[d] || []).push([x, i]); });
+  let body = kmlStyles();
+  Object.keys(byDay).sort().forEach(d => { body += "<Folder><name>" + d + "</name>\n"; byDay[d].forEach(a => { const x = a[0]; body += kmlLine(fmtClock(x.start) + " · " + (x.name || "Responder"), x.pts, x.km + " km, " + fmtDur(x.end - x.start), hsl2kml((a[1] * 47) % 360)); }); body += "</Folder>\n"; });
+  saveKml("ambulans-" + $("dFrom").value + "_" + $("dTo").value + ".kml", body);
+};
