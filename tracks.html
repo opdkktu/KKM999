@@ -37,6 +37,29 @@
   .clock{ text-align:center; font-size:12px; color:var(--mut); margin-bottom:6px }
   .ov{ position:absolute; inset:0; z-index:1500; display:none; place-items:center; background:rgba(0,0,0,.5); color:#fff; font-weight:700 } .ov.on{ display:grid }
   .leaflet-container{ background:#222 }
+
+  /* recap: stage labels, phase chip, notes card, summary */
+  .stg{ width:max-content; display:flex; align-items:center; gap:8px; transform:translate(30px,-50%); white-space:nowrap; background:rgba(21,32,28,.94); color:#fff; border-radius:12px; padding:7px 11px 7px 8px; border-left:5px solid var(--c); box-shadow:0 4px 14px rgba(0,0,0,.4); animation:stgIn .45s cubic-bezier(.2,1.3,.3,1) both; font-size:12px; line-height:1.25 }
+  .stg b{ font-size:18px } .stg span{ display:block } .stg em{ font-style:normal; color:#9DB3AA; font-size:11px; font-variant-numeric:tabular-nums }
+  .stg.old{ opacity:.78; transform:translate(30px,-50%) scale(.9); transform-origin:left center; animation:none }
+  @keyframes stgIn{ from{ opacity:0; transform:translate(10px,-50%) scale(.6) } to{ opacity:1; transform:translate(30px,-50%) scale(1) } }
+  .phase{ position:absolute; left:50%; top:calc(62px + env(safe-area-inset-top)); transform:translateX(-50%); z-index:1000; background:rgba(21,32,28,.92); color:#fff; padding:8px 16px; border-radius:999px; font-weight:700; font-size:13px; box-shadow:0 3px 12px rgba(0,0,0,.35); transition:opacity .3s; max-width:90%; text-align:center }
+  .phase.sw{ animation:ph .5s ease }  @keyframes ph{ from{ transform:translateX(-50%) translateY(-8px); opacity:0 } to{ transform:translateX(-50%); opacity:1 } }
+  .notes{ position:absolute; left:10px; right:10px; top:calc(112px + env(safe-area-inset-top)); z-index:1000; background:rgba(21,32,28,.95); color:#EAF3EF; border:1px solid var(--line); border-radius:16px; padding:12px 14px; max-height:24%; overflow:auto; font-size:13px; line-height:1.5; box-shadow:0 6px 20px rgba(0,0,0,.4); animation:up .45s ease both }
+  .notes h4{ margin:0 0 6px; font-size:12px; color:var(--acc); letter-spacing:.06em; text-transform:uppercase } .notes .mut{ color:var(--mut); font-style:italic } .notes .cur::after{ content:"▍"; animation:bl 1s infinite }
+  @keyframes up{ from{ opacity:0; transform:translateY(16px) } to{ opacity:1; transform:none } }
+  .sum{ position:absolute; inset:0; z-index:1800; display:none; align-items:center; justify-content:center; padding:20px; background:radial-gradient(circle at 50% 30%,rgba(21,32,28,.82),rgba(8,14,12,.94)) }
+  .sum.on{ display:flex; animation:fade .5s ease both } @keyframes fade{ from{ opacity:0 } to{ opacity:1 } }
+  .sum .in{ width:100%; max-width:420px; text-align:center }
+  .sum h2{ margin:0 0 4px; font-size:22px; opacity:0; animation:fu .6s .1s ease forwards } .sum .sub{ color:var(--mut); font-size:13px; margin-bottom:18px; opacity:0; animation:fu .6s .2s ease forwards }
+  .sum .big{ display:grid; grid-template-columns:1fr 1fr; gap:12px } .sum .box{ background:var(--card); border:1px solid var(--line); border-radius:20px; padding:20px 10px; opacity:0; animation:fu .7s ease forwards }
+  .sum .box b{ display:block; font-size:38px; font-variant-numeric:tabular-nums; color:var(--acc); line-height:1.1 } .sum .box span{ font-size:12px; color:var(--mut); letter-spacing:.04em; text-transform:uppercase }
+  .sum .box.a{ animation-delay:.45s } .sum .box.b{ animation-delay:.75s }
+  .sum .row3{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:12px } .sum .mini{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 6px; opacity:0; animation:fu .6s ease forwards } .sum .mini b{ display:block; font-size:18px; font-variant-numeric:tabular-nums } .sum .mini span{ font-size:11px; color:var(--mut) }
+  .sum .mini:nth-child(1){ animation-delay:1.05s } .sum .mini:nth-child(2){ animation-delay:1.2s } .sum .mini:nth-child(3){ animation-delay:1.35s }
+  .sum .acts{ display:flex; gap:10px; margin-top:18px; opacity:0; animation:fu .6s 1.6s ease forwards } .sum .acts .btn{ flex:1 }
+  @keyframes fu{ from{ opacity:0; transform:translateY(26px) } to{ opacity:1; transform:none } }
+  @media (prefers-reduced-motion:reduce){ .stg,.notes,.sum *,.phase.sw{ animation:none !important; opacity:1 !important } }
   @media (prefers-reduced-motion:reduce){ .live{ animation:none } }
 </style>
 </head>
@@ -58,7 +81,10 @@
 <div id="mapView">
   <div class="hdr"><button class="pill" id="back">← Senarai</button><div class="pill ttl" id="ttl"></div><button class="pill" id="layer">🛰</button></div>
   <div id="map"></div>
+  <div class="phase" id="phase" style="display:none"></div>
+  <div class="notes" id="notes" style="display:none"></div>
   <div class="ov" id="ov">Memuatkan trail…</div>
+  <div class="sum" id="sum"></div>
   <div class="panel">
     <div class="clock" id="clock">—</div>
     <div class="stats"><div><b id="sKm">0.0</b><span>km</span></div><div><b id="sTime">00:00</b><span>masa</span></div><div><b id="sSpd">0</b><span>km/j</span></div><div><b id="sMax">0</b><span>maks</span></div></div>
