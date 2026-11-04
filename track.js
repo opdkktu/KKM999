@@ -1,138 +1,179 @@
-/* KKM999 — admin: trip list + map replay (bird's-eye / satellite), ambulance icon, Strava-style speed trail. */
-const BACKEND_URL = "https://script.google.com/macros/s/AKfycbz-vpBAMA4nzRY11QsACuRMq8D6nmnBEni-a5_BNAUIsjJyTk1y8p2P6lDTcOgvTM7D/exec";
-const $ = id => document.getElementById(id);
-let pin = "", map, street, sat, isSat = false, casing, progress = [], amb, startM, endM;
-let run = null, P = [], T = [], cum = [], D = [], total = 0, head = 0, playing = false, speedX = 0, rafId = 0, last = 0, drawnTo = 0, liveT = 0, maxKmh = 0, hd = 0;
-const GAP_MS = 90000, GAP_PLAY = 3000;                   // a pause / lost signal > 90 s is skipped quickly in the replay
+/* KKM999 — location tracking. Starts by itself when "En route" is logged, stops by itself at "At base".
+   Works on Android Chrome and iPhone Safari / Home Screen app. Replaces the old track.js completely. */
+(function () {
+  const $ = id => document.getElementById(id);
+  const LS = { st: "trk_state", buf: "trk_buf" };
+  const MAX_HOURS = 12;                                   // safety: never track longer than this
+  let map, line, casing, amb, recenterBtn, lastAt = 0, watchId = null, wake = null, timer = null, flushT = null, dogT = null;
+  let pts = [], buf = [], runUid = "", t0 = 0, dist = 0, lastFix = 0, badge = null;
 
-async function call(action, body) {
-  const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify(Object.assign({ action: action, adminPin: pin }, body)) });
-  return r.json();
-}
-const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const pad = n => String(n).padStart(2, "0");
-const fmtDur = ms => { const s = Math.round(ms / 1000); return (s >= 3600 ? Math.floor(s / 3600) + ":" : "") + pad(Math.floor(s % 3600 / 60)) + ":" + pad(s % 60); };
-const fmtClock = ms => { const d = new Date(ms); return d.toLocaleDateString("ms-MY", { day: "2-digit", month: "short" }) + " · " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+  /* ---------- little helpers ---------- */
+  const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
+  const toast = m => { try { showToast(m); } catch (e) {} };
+  const saveState = () => lsSet(LS.st, { runUid: runUid, t0: t0, dist: dist });
+  const saveBuf = () => lsSet(LS.buf, buf.slice(-3000));
 
-/* ---------- gate + list ---------- */
-$("go").onclick = unlock; $("pin").addEventListener("keydown", e => { if (e.key === "Enter") unlock(); });
-async function unlock() {
-  const p = $("pin").value.trim(); $("perr").textContent = "Menyemak…";
-  try {
-    const r = await fetch(BACKEND_URL, { method: "POST", body: JSON.stringify({ action: "checkAdminPin", adminPin: p }) }).then(x => x.json());
-    if (r.status === "ok") { pin = p; $("gate").style.display = "none"; $("list").hidden = false; loadList(); } else $("perr").textContent = r.message || "PIN salah";
-  } catch (e) { $("perr").textContent = "Tiada sambungan."; }
-}
-$("reload").onclick = loadList; $("days").onchange = loadList;
-async function loadList() {
-  $("runs").innerHTML = '<div class="empty">Memuatkan…</div>';
-  let r; try { r = await call("listRuns", { days: Number($("days").value) }); } catch (e) { r = null; }
-  if (!r || r.status !== "ok") { $("runs").innerHTML = '<div class="empty">' + esc((r && r.message) || "Tidak dapat memuatkan.") + "</div>"; return; }
-  if (!r.runs.length) { $("runs").innerHTML = '<div class="empty">Tiada rekod lokasi dalam tempoh ini.<br>Rekod bermula bila responder tekan <b>En route</b> dari SIAGA.</div>'; return; }
-  $("runs").innerHTML = r.runs.map(x =>
-    '<div class="run" data-id="' + esc(x.runUid) + '" data-live="' + (x.live ? 1 : 0) + '" data-t="' + esc(fmtClock(x.start)) + '"><div class="ic">🚑</div><div class="m"><div class="t">' + esc(fmtClock(x.start)) + (x.live ? ' <span class="live">LIVE</span>' : "") +
-    '</div><div class="s">' + esc(x.name || "Responder") + " · " + fmtDur(x.end - x.start) + " · " + x.km + " km · " + x.n + " titik</div></div><div style=\"color:var(--mut)\">›</div></div>").join("");
-}
-$("runs").addEventListener("click", e => { const r = e.target.closest(".run"); if (r) openRun(r.dataset.id, r.dataset.t, r.dataset.live === "1"); });
-
-/* ---------- map ---------- */
-function ensureMap() {
-  if (map) return;
-  map = L.map("map", { zoomControl: false, zoomSnap: 0.5 }).setView([6.2404, 100.2467], 15);
-  street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-  sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Esri" });
-  map.on("dragstart", () => { if (amb) { amb.follow(false); $("follow").style.opacity = ".6"; } });
-}
-$("layer").onclick = () => { isSat = !isSat; if (isSat) { map.addLayer(sat); map.removeLayer(street); } else { map.addLayer(street); map.removeLayer(sat); } $("layer").textContent = isSat ? "🗺" : "🛰"; };
-$("follow").onclick = () => { amb.follow(!amb.isFollowing()); $("follow").style.opacity = amb.isFollowing() ? "1" : ".6"; };
-$("back").onclick = () => { stopAll(); $("mapView").classList.remove("on"); $("list").hidden = false; loadList(); };
-
-/* ---------- build a run ---------- */
-async function openRun(id, label, live) {
-  $("list").hidden = true; $("mapView").classList.add("on"); $("ov").classList.add("on"); ensureMap(); setTimeout(() => map.invalidateSize(), 60);
-  $("ttl").textContent = label || id; stopAll();
-  let r; try { r = await call("getRun", { runUid: id }); } catch (e) { r = null; }
-  $("ov").classList.remove("on");
-  if (!r || r.status !== "ok" || r.pts.length < 2) { $("clock").textContent = (r && r.message) || "Trail kosong / terlalu pendek."; return; }
-  run = { id: id, live: !!live };
-  setPts(r.pts); drawBase();
-  head = 0; drawnTo = 0; maxKmh = 0; hd = bearingAt(0);
-  amb = Amb.create(map, { follow: true }); amb.place(P[0][0], P[0][1], hd); $("follow").style.opacity = "1";
-  const autoX = Math.max(1, Math.ceil(total / 45000)); buildSpeedButtons(live ? 1 : autoX);
-  map.fitBounds(casing.getBounds(), { padding: [50, 50] });
-  setTimeout(() => { if (amb) amb.follow(true); }, 1200);
-  if (live) { head = total; drawnTo = P.length - 1; paintProgress(P.length - 1); showAt(total); liveT = setInterval(pollLive, 8000); }
-  setPlaying(!live);
-  seekUi();
-}
-function setPts(pts) {
-  P = pts; T = pts.map(p => p[2]); cum = [0]; D = [0];
-  for (let i = 1; i < P.length; i++) { const dt = T[i] - T[i - 1]; cum[i] = cum[i - 1] + (dt > GAP_MS ? GAP_PLAY : dt); D[i] = D[i - 1] + L.latLng(P[i - 1][0], P[i - 1][1]).distanceTo(L.latLng(P[i][0], P[i][1])); }
-  total = cum[cum.length - 1];
-}
-function segKmh(i) { if (i < 1) return 0; const dt = (T[i] - T[i - 1]) / 1000, d = D[i] - D[i - 1]; if (dt <= 0 || dt > 90) return 0; const v = P[i][3] != null && P[i][3] >= 0 ? P[i][3] * 3.6 : d / dt * 3.6; return v; }
-function drawBase() {
-  if (casing) { map.removeLayer(casing); progress.forEach(l => map.removeLayer(l)); } progress = [];
-  if (startM) map.removeLayer(startM); if (endM) map.removeLayer(endM);
-  const ll = P.map(p => [p[0], p[1]]);
-  casing = L.polyline(ll, { color: "#fff", weight: 11, opacity: .55, lineCap: "round", lineJoin: "round" }).addTo(map);   // the whole route, pale, so you can see where it is going
-  const dotIc = (c, t) => L.divIcon({ className: "", html: '<div style="width:26px;height:26px;border-radius:50%;background:' + c + ';border:3px solid #fff;color:#fff;font:800 12px/20px system-ui;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.4)">' + t + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] });
-  startM = L.marker(ll[0], { icon: dotIc("#2FAE98", "S"), interactive: false }).addTo(map); endM = L.marker(ll[ll.length - 1], { icon: dotIc("#E6483F", "E"), interactive: false }).addTo(map);
-}
-function paintProgress(upTo) {            // coloured by speed, green (slow) → red (fast)
-  for (let i = drawnTo + 1; i <= upTo; i++) {
-    if (T[i] - T[i - 1] > GAP_MS) continue;
-    progress.push(L.polyline([[P[i - 1][0], P[i - 1][1]], [P[i][0], P[i][1]]], { color: Amb.speedColor(segKmh(i)), weight: 6, lineCap: "round" }).addTo(map));
-    if (segKmh(i) > maxKmh && segKmh(i) < 220) maxKmh = segKmh(i);
+  function ensureMap() {
+    if (map || !window.L || !$("trk-map")) return;
+    map = L.map("trk-map", { zoomControl: false }).setView([6.240404, 100.246714], 17);
+    const street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+    const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Esri" });
+    L.control.layers({ "Peta": street, "Satelit": sat }, null, { position: "topright", collapsed: true }).addTo(map);
+    const ll = pts.map(p => [p.lat, p.lng]);
+    casing = L.polyline(ll, { color: "#fff", weight: 11, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(map);   // white casing like Google Maps / Strava
+    line = L.polyline(ll, { color: "#1d7fd1", weight: 6, lineCap: "round", lineJoin: "round" }).addTo(map);
+    amb = Amb.create(map, { follow: true });                                                                              // 🚑 top-down ambulance, turns with the road
+    if (pts.length) { const p = pts[pts.length - 1]; amb.place(p.lat, p.lng); }
+    map.on("dragstart", () => { amb.follow(false); if (recenterBtn) recenterBtn.style.display = "flex"; });
+    recenterBtn = document.createElement("button"); recenterBtn.type = "button"; recenterBtn.textContent = "◎ Ikut";
+    recenterBtn.style.cssText = "position:absolute;right:12px;bottom:96px;z-index:1000;display:none;align-items:center;gap:6px;padding:11px 16px;border:0;border-radius:999px;background:#1d7fd1;color:#fff;font:700 14px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.3)";
+    recenterBtn.onclick = () => { amb.follow(true); recenterBtn.style.display = "none"; };
+    $("trk").appendChild(recenterBtn);
   }
-  drawnTo = Math.max(drawnTo, upTo);
-}
-function clearProgress() { progress.forEach(l => map.removeLayer(l)); progress = []; drawnTo = 0; maxKmh = 0; }
+  function hav(a, b) {
+    const r = Math.PI / 180, dLa = (b.lat - a.lat) * r, dLo = (b.lng - a.lng) * r;
+    const x = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLo / 2) ** 2;
+    return 2 * 6371000 * Math.asin(Math.sqrt(x));
+  }
 
-/* ---------- position at play-time ---------- */
-function idxAt(t) { let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (cum[m] <= t) lo = m; else hi = m - 1; } return lo; }
-function bearingAt(i) { const a = Math.max(0, i - 3), b = Math.min(P.length - 1, i + 3); return a === b ? 0 : Amb.bearing([P[a][0], P[a][1]], [P[b][0], P[b][1]]); }
-function showAt(t) {
-  const i = idxAt(t), j = Math.min(P.length - 1, i + 1), seg = cum[j] - cum[i], k = seg > 0 ? (t - cum[i]) / seg : 0;
-  const lat = P[i][0] + (P[j][0] - P[i][0]) * k, lng = P[i][1] + (P[j][1] - P[i][1]) * k;
-  const target = bearingAt(i), df = ((target - hd + 540) % 360) - 180; hd = (hd + df * 0.18 + 360) % 360;     // smooth turning
-  amb.place(lat, lng, hd);
-  if (i > drawnTo) paintProgress(i); else if (i < drawnTo - 1) { clearProgress(); paintProgress(i); }
-  const km = (D[i] + (D[j] - D[i]) * k) / 1000, real = T[i] + (T[j] - T[i]) * Math.min(1, k) * (T[j] - T[i] > GAP_MS ? 0 : 1);
-  $("sKm").textContent = km.toFixed(1); $("sTime").textContent = fmtDur(real - T[0]); $("sSpd").textContent = Math.round(segKmh(j)); $("sMax").textContent = Math.round(maxKmh);
-  $("clock").textContent = fmtClock(real) + (run && run.live && t >= total - 50 ? "  ·  LIVE" : "");
-  $("seek").value = total ? Math.round(t / total * 1000) : 0;
-}
-function seekUi() { showAt(head); }
+  /* ---------- "Tracking ON" badge (always visible while running) ---------- */
+  function makeBadge() {
+    if (badge) return;
+    const css = document.createElement("style");
+    css.textContent =
+      "#trk-badge{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:9999;display:none;align-items:center;gap:8px;" +
+      "padding:9px 14px;border-radius:999px;background:#0F5C56;color:#fff;font:600 13px system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.3);border:0;cursor:pointer}" +
+      "#trk-badge.on{display:flex}#trk-badge.warn{background:#B45309}" +
+      "#trk-badge i{width:10px;height:10px;border-radius:50%;background:#ff5a50;animation:trkp 1.2s infinite}" +
+      "@keyframes trkp{0%,100%{opacity:1}50%{opacity:.25}}";
+    document.head.appendChild(css);
+    badge = document.createElement("button"); badge.id = "trk-badge"; badge.type = "button";
+    badge.innerHTML = "<i></i><span>Tracking ON</span>";
+    badge.addEventListener("click", () => { $("trk").hidden = false; ensureMap(); setTimeout(() => { if(map){ map.invalidateSize(); if(amb && amb.pos()){ amb.follow(true); if(recenterBtn) recenterBtn.style.display = "none"; } } }, 50); });
+    document.body.appendChild(badge);
+  }
+  function setBadge(on, warn, text) {
+    makeBadge();
+    badge.classList.toggle("on", !!on); badge.classList.toggle("warn", !!warn);
+    badge.querySelector("span").textContent = text || "Tracking ON";
+    if ($("btn-track")) $("btn-track").textContent = on ? "📍●" : "📍";
+    if ($("trk-toggle")) $("trk-toggle").textContent = on ? "■ Stop" : "▶ Start";
+  }
 
-/* ---------- playback loop ---------- */
-function setPlaying(on) {
-  playing = on; $("play").textContent = on ? "❚❚" : "▶"; cancelAnimationFrame(rafId);
-  if (on) { if (head >= total && !(run && run.live)) { head = 0; clearProgress(); } last = performance.now(); rafId = requestAnimationFrame(loop); }
-}
-function loop(now) {
-  const dt = now - last; last = now; head = Math.min(total, head + dt * speedX); showAt(head);
-  if (head >= total) { if (run && run.live) { rafId = requestAnimationFrame(loop); return; } setPlaying(false); return; }
-  rafId = requestAnimationFrame(loop);
-}
-$("play").onclick = () => setPlaying(!playing);
-$("seek").addEventListener("input", e => { head = Number(e.target.value) / 1000 * total; if (!playing) showAt(head); else showAt(head); });
-function buildSpeedButtons(def) {
-  const opts = [1, 5, 10, 30, 60, 120]; if (opts.indexOf(def) < 0) { opts.push(def); opts.sort((a, b) => a - b); }
-  speedX = def;
-  $("spd").innerHTML = opts.map(x => '<button data-x="' + x + '" class="' + (x === def ? "on" : "") + '">' + x + "×</button>").join("");
-}
-$("spd").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; speedX = Number(b.dataset.x); [].forEach.call($("spd").children, c => c.classList.toggle("on", c === b)); });
+  /* ---------- drawing + sending ---------- */
+  function render() {
+    if (!$("trk-dist")) return;
+    const s = Math.max(0, Math.floor((Date.now() - t0) / 1000)), km = dist / 1000, hrs = s / 3600;
+    $("trk-dist").textContent = km.toFixed(2) + " km";
+    $("trk-time").textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    $("trk-spd").textContent = (hrs > 0 ? km / hrs : 0).toFixed(1) + " km/h";
+  }
+  function onPos(p) {
+    lastFix = Date.now();
+    const c = p.coords;
+    if (c.accuracy > 60) return;                                    // ignore poor GPS fixes
+    const pt = { lat: c.latitude, lng: c.longitude, acc: Math.round(c.accuracy), spd: c.speed, t: Date.now() };
+    const last = pts[pts.length - 1];
+    if (last) { const d = hav(last, pt); if (d < 8 && Date.now() - last.t < 60000) return; dist += d; }   // skip jitter, but keep a point every minute
+    pts.push(pt); buf.push(pt); saveBuf(); saveState();
+    setBadge(true, false, "Tracking ON");
+    if (map && line && amb) {
+      const ll = [pt.lat, pt.lng], gap = lastAt ? Date.now() - lastAt : 1000; lastAt = Date.now();
+      line.addLatLng(ll); casing.addLatLng(ll);
+      if (pt.spd != null && pt.spd > 1.5 && c.heading != null && !isNaN(c.heading) && !amb.pos()) amb.setHeading(c.heading);
+      amb.move(pt.lat, pt.lng, Math.min(Math.max(gap, 600), 4000));        // glide to the new fix instead of jumping
+    }
+    render();
+  }
+  function onErr(e) {
+    if (e && e.code === 1) {                                        // permission denied
+      setBadge(true, true, "Aktifkan Lokasi!");
+      toast(/iPhone|iPad|iPod/i.test(navigator.userAgent)
+        ? "Lokasi ditolak. iPhone: Tetapan → Privasi → Perkhidmatan Lokasi → Safari/Web App → Semasa Menggunakan."
+        : "Lokasi ditolak. Android: ketik ikon kunci di bar alamat → Kebenaran → Lokasi → Benarkan.");
+    } else setBadge(true, true, "GPS lemah");
+  }
+  async function flush() {
+    if (!buf.length || !runUid) return;
+    const batch = buf.splice(0, 500);
+    try {
+      const r = await callBackend("saveTrack", { runUid: runUid, points: batch });
+      if (!r || r.status !== "ok") throw new Error(r && r.message);
+      saveBuf();
+    } catch (e) { buf = batch.concat(buf); saveBuf(); }             // keep and retry next time
+  }
 
-/* ---------- live: poll new points while the ambulance is still moving ---------- */
-async function pollLive() {
-  if (!run || !run.live || document.hidden) return;
-  let r; try { r = await call("getRun", { runUid: run.id, after: T[T.length - 1] }); } catch (e) { return; }
-  if (!r || r.status !== "ok" || !r.pts.length) { if (r && r.now && r.now - T[T.length - 1] > 180000) { run.live = false; clearInterval(liveT); $("clock").textContent = "Perjalanan tamat."; } return; }
-  const atEnd = head >= total - 50, add = r.pts;
-  const keep = P.length; setPts(P.concat(add)); drawBase_keepProgress(keep);
-  if (atEnd) head = cum[keep - 1];            // stay at the old end and glide along the new points at real speed
-  if (!playing) setPlaying(true);
-}
-function drawBase_keepProgress() { casing.setLatLngs(P.map(p => [p[0], p[1]])); if (endM) endM.setLatLng([P[P.length - 1][0], P[P.length - 1][1]]); }
-function stopAll() { playing = false; cancelAnimationFrame(rafId); clearInterval(liveT); if (amb) { amb.remove(); amb = null; } if (map) { progress.forEach(l => map.removeLayer(l)); progress = []; if (casing) map.removeLayer(casing); if (startM) map.removeLayer(startM); if (endM) map.removeLayer(endM); casing = startM = endM = null; } run = null; drawnTo = 0; }
+  /* ---------- keep the screen / GPS alive ---------- */
+  async function keepAwake() {
+    try { if (navigator.wakeLock && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } } catch (e) { wake = null; }
+  }
+  function startWatch() {
+    if (!navigator.geolocation) { toast("Peranti ini tidak menyokong GPS."); return; }
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    lastFix = Date.now();
+  }
+  document.addEventListener("visibilitychange", () => {            // screen back on: GPS often froze while hidden (iPhone) → restart it
+    if (watchId === null) return;
+    if (!document.hidden) { keepAwake(); startWatch(); flush(); }
+  });
+  window.addEventListener("online", () => { if (watchId !== null) flush(); });
+
+  /* ---------- start / stop ---------- */
+  function begin(resume, caseUid) {
+    if (watchId !== null) return;                                   // already running
+    makeBadge(); ensureMap();
+    if (!resume) {
+      pts = []; buf = lsGet(LS.buf) || []; dist = 0; t0 = Date.now();
+      runUid = (caseUid ? String(caseUid) : "RUN") + "-" + t0;
+      if (line) { line.setLatLngs([]); casing.setLatLngs([]); if (amb) amb.remove(); lastAt = 0; }
+    }
+    saveState();
+    startWatch();
+    timer = setInterval(render, 1000);
+    flushT = setInterval(flush, 20000);
+    dogT = setInterval(() => {                                      // watchdog
+      if (Date.now() - t0 > MAX_HOURS * 3600000) { stop(true); return; }
+      if (!document.hidden && Date.now() - lastFix > 45000) { setBadge(true, true, "GPS lemah"); startWatch(); }
+    }, 15000);
+    keepAwake(); setBadge(true, false, "Tracking ON"); render();
+  }
+  async function stop(auto) {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null; clearInterval(timer); clearInterval(flushT); clearInterval(dogT);
+    if (wake) { try { wake.release(); } catch (e) {} wake = null; }
+    await flush();
+    lsDel(LS.st); if (!buf.length) lsDel(LS.buf);
+    setBadge(false);
+    if (auto) toast("Penjejakan lokasi dihentikan.");
+  }
+
+  /* ---------- public API used by app.js ---------- */
+  window.Trk = {
+    running: () => watchId !== null,
+    /* call from inside the "En route" tap (iPhone only asks for GPS permission after a tap) */
+    autoStart: function (caseUid) {
+      if (watchId !== null) return;
+      if (!HR_TOKEN()) { toast("Buka dari SIAGA supaya lokasi direkod."); return; }
+      begin(false, caseUid);
+      toast("📍 Penjejakan lokasi AKTIF — jangan tutup aplikasi. Kekalkan skrin menyala.");
+    },
+    autoStop: function () { if (watchId !== null) return stop(true); }
+  };
+
+  /* manual button still works */
+  if ($("btn-track")) $("btn-track").addEventListener("click", () => { $("trk").hidden = false; ensureMap(); setTimeout(() => map && map.invalidateSize(), 50); });
+  if ($("trk-close")) $("trk-close").addEventListener("click", () => { $("trk").hidden = true; });
+  if ($("trk-toggle")) $("trk-toggle").addEventListener("click", () => { watchId === null ? (HR_TOKEN() ? begin(false, "") : toast("Buka dari SIAGA supaya lokasi direkod.")) : stop(false); });
+
+  /* page reloaded / app reopened while a trip was running → carry on with the same trail */
+  window.addEventListener("load", () => {
+    const s = lsGet(LS.st);
+    if (s && s.runUid && Date.now() - s.t0 < MAX_HOURS * 3600000) {
+      runUid = s.runUid; t0 = s.t0; dist = s.dist || 0; buf = lsGet(LS.buf) || [];
+      setTimeout(() => begin(true), 600);
+    } else if (s) { lsDel(LS.st); }
+  });
+})();
