@@ -5,15 +5,20 @@ let adminPin = "8888";
 const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token") || ""; } catch (e) { return ""; } };
 
 /* Opened from SIAGA as a superadmin? Then no PIN is needed — SIAGA's login is the proof. */
-(async function autoUnlock() {
+async function autoUnlock() {
   const note = t => { try { const e = document.getElementById("pin-error"); if (e && !/Checking|Ralat|lambat/.test(e.textContent)) e.textContent = t; } catch (x) {} };
-  if (!HR_TOKEN()) { note("v4 · tiada sesi SIAGA — buka dari menu dashboard SIAGA"); return; }
+  if (!HR_TOKEN()) { note("v5 · tiada sesi SIAGA — buka dari menu dashboard SIAGA"); return; }
+  els.pinGate.style.visibility = "hidden"; showOverlay("Menyemak akses SIAGA…");      // no flicker: the PIN box only appears if SIAGA access is not enough
   try {
     const r = await call("checkAdminPin", {});
     if (r.status === "ok") { els.pinGate.hidden = true; els.adminRoot.hidden = false; loadMonth(); }
-    else note("v4 · " + (await siagaRoleHint()) + "  [server: " + (r.message || "?") + "]");
-  } catch (e) { note("v4 · semakan SIAGA gagal: " + (e && e.message ? e.message : "?")); }
-})();
+    else {
+      let dbg; try { dbg = await call("superDebug", {}); } catch (e) { dbg = { why: "superDebug gagal: " + e.message }; }
+      note("v5 · " + (await siagaRoleHint()) + "  |  KKM999→SIAGA: " + (dbg.why || dbg.message || "?") + (dbg.ok ? " (server sah superadmin, tetapi baris injection dalam doPost tidak berfungsi / tidak disimpan)" : ""));
+    }
+  } catch (e) { note("v5 · semakan SIAGA gagal: " + (e && e.message ? e.message : "?")); }
+  finally { hideOverlay(); els.pinGate.style.visibility = ""; }
+}
 
 /* Diagnosis only: ask SIAGA directly what role this login has. */
 async function siagaRoleHint() {
@@ -157,3 +162,5 @@ function escapeHtml(s) {
 
 function showOverlay(label) { els.loadingLabel.textContent = label; els.loadingOverlay.classList.add("visible"); }
 function hideOverlay() { els.loadingOverlay.classList.remove("visible"); }
+
+autoUnlock();
