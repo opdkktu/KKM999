@@ -60,6 +60,12 @@
   .sum .acts{ display:flex; gap:10px; margin-top:18px; opacity:0; animation:fu .6s 1.6s ease forwards } .sum .acts .btn{ flex:1 }
   @keyframes fu{ from{ opacity:0; transform:translateY(26px) } to{ opacity:1; transform:none } }
   @media (prefers-reduced-motion:reduce){ .stg,.notes,.sum *,.phase.sw{ animation:none !important; opacity:1 !important } }
+  .tabs{ display:flex; gap:8px; margin-bottom:12px } .tabs button{ flex:1; border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:12px; padding:11px; font-weight:700; cursor:pointer } .tabs button.on{ background:var(--acc); color:#06231D; border-color:var(--acc) }
+  #monthView{ position:fixed; inset:0; display:none; flex-direction:column; background:var(--bg); z-index:20 } #monthView.on{ display:flex }
+  .mtop{ display:flex; gap:6px; align-items:center; padding:calc(10px + env(safe-area-inset-top)) 10px 6px; flex-wrap:wrap } .mtop input{ width:auto; flex:1; min-width:120px; padding:9px; font-size:14px } .mtop span{ color:var(--mut) }
+  .quick{ display:flex; gap:6px; padding:0 10px 8px; overflow-x:auto } .quick button{ flex:none; border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:99px; padding:7px 13px; font-weight:700; cursor:pointer; font-size:13px } .quick button.on{ background:var(--acc); color:#06231D; border-color:var(--acc) }
+  #mmap{ flex:1; min-height:0 } .mstat{ background:var(--card); border-top:1px solid var(--line); padding:12px 14px calc(14px + env(safe-area-inset-bottom)); text-align:center; font-size:14px; color:var(--mut) } .mstat b{ color:var(--ink); font-size:18px }
+  .leaflet-popup-content-wrapper{ background:#1D2D28; color:#EAF3EF } .leaflet-popup-tip{ background:#1D2D28 } .leaflet-popup-content button{ margin-top:8px; border:0; border-radius:10px; background:#2FAE98; color:#06231D; font-weight:800; padding:8px 12px; cursor:pointer }
   @media (prefers-reduced-motion:reduce){ .live{ animation:none } }
 </style>
 </head>
@@ -74,12 +80,13 @@
 
 <div id="list" hidden>
   <div class="top"><h1>🚑 Rekod Perjalanan</h1><a href="admin.html">← Laporan</a></div>
+  <div class="tabs"><button class="on" id="tabList">📋 Senarai</button><button id="tabMonth">🗺 Peta keseluruhan</button></div>
   <div class="filters"><select id="days"><option value="7">7 hari</option><option value="30" selected>30 hari</option><option value="90">90 hari</option></select><button class="btn ghost" id="reload">↻ Muat semula</button></div>
   <div id="runs"><div class="empty">Memuatkan…</div></div>
 </div>
 
 <div id="mapView">
-  <div class="hdr"><button class="pill" id="back">← Senarai</button><div class="pill ttl" id="ttl"></div><button class="pill" id="layer">🛰</button></div>
+  <div class="hdr"><button class="pill" id="back">← Senarai</button><div class="pill ttl" id="ttl"></div><button class="pill" id="kmlOne" title="Muat turun KML untuk Google Maps / Earth">⬇ KML</button><button class="pill" id="layer">🛰</button></div>
   <div id="map"></div>
   <div class="phase" id="phase" style="display:none"></div>
   <div class="notes" id="notes" style="display:none"></div>
@@ -91,6 +98,18 @@
     <div class="ctl"><button class="play" id="play" aria-label="Main / jeda">▶</button><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Garis masa"><button class="pill" id="follow">◎</button></div>
     <div class="spd" id="spd"></div>
   </div>
+</div>
+
+<div id="monthView">
+  <div class="mtop">
+    <button class="pill" id="mBack">← Senarai</button>
+    <input type="date" id="dFrom" aria-label="Dari"><span>–</span><input type="date" id="dTo" aria-label="Hingga">
+    <button class="pill" id="mLayer">🛰</button><button class="pill" id="mKml">⬇ KML</button>
+  </div>
+  <div class="quick" id="quick"><button data-q="today">Hari ini</button><button data-q="7">7 hari</button><button data-q="month">Bulan ini</button><button data-q="prev">Bulan lepas</button><button data-q="90">90 hari</button></div>
+  <div id="mmap"></div>
+  <div class="mstat" id="mstat">—</div>
+  <div class="ov" id="mov">Memuatkan…</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
