@@ -13,7 +13,7 @@ const CONFIG = {
     { name: "Hospital Sultanah Bahiyah", lat: 6.16200, lng: 100.36400 }
   ],
 
-  BASE: { name: "Klinik Kesihatan Ayer Hitam", lat: 6.20, lng: 100.43000 },
+  BASE: { name: "Klinik Kesihatan Ayer Hitam", lat: 6.240404, lng: 100.246714 },
 
   AUDIO_BITRATE: 16000,
   CHUNK_MS: 10000,
