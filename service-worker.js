@@ -1,10 +1,12 @@
-const CACHE_NAME = "ambulance-report-v6";
+const CACHE_NAME = "ambulance-report-v7";
 const SHELL_FILES = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
   "./config.js",
+  "./track.js",
+  "./amb.js",
   "./storage.js",
   "./manifest.json",
   "./icons/icon-192.png",
@@ -29,22 +31,16 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Shell files: cache-first. Backend calls (POST to Apps Script): always network,
-// never cached — case submissions must not be served stale.
+// Same-origin files: NETWORK-first (so a new track.js / app.js reaches phones straight away), falling back to the cache when offline.
+// Backend calls (POST to Apps Script) are never cached — case submissions must not be served stale.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
-
+  const same = req.url.startsWith(self.location.origin);
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
-        if (res.ok && req.url.startsWith(self.location.origin)) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-        }
-        return res;
-      }).catch(() => cached);
-    })
+    fetch(req).then((res) => {
+      if (res.ok && same) { const copy = res.clone(); caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)); }
+      return res;
+    }).catch(() => caches.match(req))
   );
 });
