@@ -2,6 +2,22 @@ const BACKEND_URL =
   "https://script.google.com/macros/s/AKfycbz-vpBAMA4nzRY11QsACuRMq8D6nmnBEni-a5_BNAUIsjJyTk1y8p2P6lDTcOgvTM7D/exec";
 
 let adminPin = "8888";
+
+/* ---- on-screen + console log (set DEBUG = false when everything works) ---- */
+const DEBUG = true, T0 = Date.now();
+function dbg(m) {
+  const line = "[" + ((Date.now() - T0) / 1000).toFixed(1) + "s] " + m;
+  console.log("[KKM999 admin]", line);
+  if (!DEBUG) return;
+  try {
+    let b = document.getElementById("dbg");
+    if (!b) { b = document.createElement("pre"); b.id = "dbg"; b.style.cssText = "position:fixed;left:0;right:0;bottom:0;max-height:40vh;overflow:auto;margin:0;padding:8px 10px;background:rgba(0,0,0,.85);color:#9fe;font:11px/1.45 monospace;z-index:99999;white-space:pre-wrap;word-break:break-all"; document.body.appendChild(b); }
+    b.textContent += line + "\n"; b.scrollTop = b.scrollHeight;
+  } catch (e) {}
+}
+window.addEventListener("error", function (ev) { dbg("JS ERROR: " + ev.message + " (line " + ev.lineno + ")"); });
+window.addEventListener("unhandledrejection", function (ev) { dbg("PROMISE ERROR: " + (ev.reason && ev.reason.message || ev.reason)); });
+dbg("admin.js loaded · SIAGA token: " + (function () { try { return sessionStorage.getItem("kkah_session_token") ? "ada" : "tiada"; } catch (e) { return "?"; } })());
 const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token") || ""; } catch (e) { return ""; } };
 
 /* Opened from SIAGA as a superadmin? Then no PIN is needed — SIAGA's login is the proof. */
@@ -11,7 +27,7 @@ async function autoUnlock() {
   els.pinGate.style.visibility = "hidden"; showOverlay("Menyemak akses SIAGA…");      // no flicker: the PIN box only appears if SIAGA access is not enough
   try {
     const r = await call("checkAdminPin", {});
-    if (r.status === "ok") { els.pinGate.hidden = true; els.adminRoot.hidden = false; loadMonth(); }
+    if (r.status === "ok") { dbg("SIAGA superadmin diterima → buka laporan"); els.pinGate.hidden = true; els.pinGate.style.display = "none"; els.adminRoot.hidden = false; loadMonth(); }
     else {
       let dbg; try { dbg = await call("superDebug", {}); } catch (e) { dbg = { why: "superDebug gagal: " + e.message }; }
       note("v5 · " + (await siagaRoleHint()) + "  |  KKM999→SIAGA: " + (dbg.why || dbg.message || "?") + (dbg.ok ? " (server sah superadmin, tetapi baris injection dalam doPost tidak berfungsi / tidak disimpan)" : ""));
@@ -48,13 +64,17 @@ els.pinInput.addEventListener("keydown", function (e) { if (e.key === "Enter") s
 
 async function submitPin() {
   const pin = els.pinInput.value.trim();
+  dbg("PIN dihantar (" + pin.length + " aksara)");
   els.pinError.textContent = "Checking…";
   try {
     const r = await call("checkAdminPin", { adminPin: pin });
     if (r.status === "ok") {
+      dbg("PIN betul → buka laporan");
       adminPin = pin;
       els.pinGate.hidden = true;
+      els.pinGate.style.display = "none";    // .pin-gate{display:flex} in style.css overrides the hidden attribute — this is what kept the PIN box on top
       els.adminRoot.hidden = false;
+      els.pinError.textContent = "";
       loadMonth();
     } else {
       els.pinError.textContent = r.message || "Incorrect PIN";
@@ -67,12 +87,14 @@ async function submitPin() {
 async function call(action, body) {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);     // never hang silently
   try {
+    dbg("→ " + action + (HR_TOKEN() ? " (+token)" : ""));
     const res = await fetch(BACKEND_URL, {
       method: "POST",
       body: JSON.stringify(Object.assign({ action: action, hrToken: HR_TOKEN() }, body)),
       signal: ctl.signal
     });
     const txt = await res.text();
+    dbg("← " + action + " HTTP " + res.status + " " + txt.slice(0, 150).replace(/\s+/g, " "));
     try { return JSON.parse(txt); }
     catch (e) { throw new Error("Server tidak membalas JSON (HTTP " + res.status + "): " + txt.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180)); }
   } finally { clearTimeout(timer); }
@@ -91,9 +113,12 @@ async function loadMonth() {
       els.content.innerHTML = '<div class="admin-empty">' + escapeHtml(r.message || "Could not load") + "</div>";
       return;
     }
+    dbg("render: " + r.totalCases + " kes");
     render(r);
+    dbg("render selesai");
   } catch (e) {
-    els.content.innerHTML = '<div class="admin-empty">No connection — try again when online.</div>';
+    dbg("loadMonth RALAT: " + (e && e.stack || e));
+    els.content.innerHTML = '<div class="admin-empty">Ralat: ' + escapeHtml(String(e && e.message || e)) + "</div>";
   } finally {
     hideOverlay();
   }
