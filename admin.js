@@ -7,13 +7,24 @@ const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token
 /* Opened from SIAGA as a superadmin? Then no PIN is needed — SIAGA's login is the proof. */
 (async function autoUnlock() {
   const note = t => { try { const e = document.getElementById("pin-error"); if (e && !/Checking|Ralat|lambat/.test(e.textContent)) e.textContent = t; } catch (x) {} };
-  if (!HR_TOKEN()) { note("v3 · tiada sesi SIAGA — buka dari menu dashboard SIAGA"); return; }
+  if (!HR_TOKEN()) { note("v4 · tiada sesi SIAGA — buka dari menu dashboard SIAGA"); return; }
   try {
     const r = await call("checkAdminPin", {});
     if (r.status === "ok") { els.pinGate.hidden = true; els.adminRoot.hidden = false; loadMonth(); }
-    else note("v3 · sesi SIAGA ada, tetapi bukan superadmin / role belum dihantar (" + (r.message || "?") + ")");
-  } catch (e) { note("v3 · semakan SIAGA gagal: " + (e && e.message ? e.message : "?")); }
+    else note("v4 · " + (await siagaRoleHint()) + "  [server: " + (r.message || "?") + "]");
+  } catch (e) { note("v4 · semakan SIAGA gagal: " + (e && e.message ? e.message : "?")); }
 })();
+
+/* Diagnosis only: ask SIAGA directly what role this login has. */
+async function siagaRoleHint() {
+  try {
+    const r = await fetch("https://script.google.com/macros/s/AKfycbxOamlCtYPlZCvQOys1VTjkZu7aVqMsdDStTdytPex7eH5jNGuIBiR91BfougaEF3SI/exec", { method: "POST", body: JSON.stringify({ action: "getMyProfile", token: HR_TOKEN() }) }).then(x => x.json());
+    if (!r.ok) return "SIAGA tolak sesi: " + (r.error || "?");
+    if (r.role === undefined) return "SIAGA tidak menghantar 'role' — edit getMyProfile belum ada / belum deploy versi baharu";
+    if (r.role !== "superadmin") return "akaun ini role = '" + r.role + "' (bukan superadmin)";
+    return "SIAGA berkata superadmin — tetapi server KKM999 tolak (semak baris injection dalam doPost & deploy versi baharu)";
+  } catch (e) { return "tidak dapat hubungi SIAGA: " + e.message; }
+}
 
 const els = {};
 ["pin-gate", "pin-input", "pin-error", "admin-root", "status-dot", "month-input",
