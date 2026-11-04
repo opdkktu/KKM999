@@ -2,6 +2,16 @@ const BACKEND_URL =
   "https://script.google.com/macros/s/AKfycbz-vpBAMA4nzRY11QsACuRMq8D6nmnBEni-a5_BNAUIsjJyTk1y8p2P6lDTcOgvTM7D/exec";
 
 let adminPin = "8888";
+const HR_TOKEN = () => { try { return sessionStorage.getItem("kkah_session_token") || ""; } catch (e) { return ""; } };
+
+/* Opened from SIAGA as a superadmin? Then no PIN is needed — SIAGA's login is the proof. */
+(async function autoUnlock() {
+  if (!HR_TOKEN()) return;
+  try {
+    const r = await call("checkAdminPin", {});
+    if (r.status === "ok") { els.pinGate.hidden = true; els.adminRoot.hidden = false; loadMonth(); }
+  } catch (e) { /* fall back to the PIN box */ }
+})();
 
 const els = {};
 ["pin-gate", "pin-input", "pin-error", "admin-root", "status-dot", "month-input",
@@ -32,16 +42,22 @@ async function submitPin() {
       els.pinError.textContent = r.message || "Incorrect PIN";
     }
   } catch (e) {
-    els.pinError.textContent = "No connection — cannot verify PIN right now";
+    els.pinError.textContent = e && e.name === "AbortError" ? "Server terlalu lambat (>30 saat). Cuba lagi." : "Ralat: " + (e && e.message ? e.message : "tiada sambungan");
   }
 }
 
 async function call(action, body) {
-  const res = await fetch(BACKEND_URL, {
-    method: "POST",
-    body: JSON.stringify(Object.assign({ action: action }, body))
-  });
-  return res.json();
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);     // never hang silently
+  try {
+    const res = await fetch(BACKEND_URL, {
+      method: "POST",
+      body: JSON.stringify(Object.assign({ action: action, hrToken: HR_TOKEN() }, body)),
+      signal: ctl.signal
+    });
+    const txt = await res.text();
+    try { return JSON.parse(txt); }
+    catch (e) { throw new Error("Server tidak membalas JSON (HTTP " + res.status + "): " + txt.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180)); }
+  } finally { clearTimeout(timer); }
 }
 
 document.getElementById("btn-load").addEventListener("click", loadMonth);
